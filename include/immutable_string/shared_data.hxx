@@ -12,7 +12,7 @@
 //
 
 template <typename T, typename AllocatorT = std::allocator<T>>
-    requires std::is_pod_v<T>
+    requires (!std::is_array_v<T>) && std::is_trivial_v<T> && std::is_standard_layout_v<T>
 class shared_data final
 {
 public:
@@ -28,38 +28,32 @@ public:
     shared_data(shared_data&&) = delete;
     shared_data& operator=(shared_data&&) = delete;
 
-    constexpr T const* data() const noexcept
+    [[nodiscard]] constexpr T const* data() const noexcept
     {
-        static constexpr size_type _header_size = round_up(sizeof(shared_data));
-
-        auto start = reinterpret_cast<const std::byte*>(this + 1);
-        return reinterpret_cast<const T*>(start + _header_size);
+        auto start = reinterpret_cast<const std::byte*>(this);
+        return reinterpret_cast<const T*>(start + padded_header_size());
     }
 
-    constexpr T* data() noexcept
+    [[nodiscard]] constexpr T* data() noexcept
     {
-        static constexpr size_type _header_size = round_up(sizeof(shared_data));
-
-        auto start = reinterpret_cast<std::byte*>(this + 1);
-        return reinterpret_cast<T*>(start + _header_size);
+        auto start = reinterpret_cast<std::byte*>(this);
+        return reinterpret_cast<T*>(start + padded_header_size());
     }
 
-    constexpr size_type capacity() const noexcept
+    [[nodiscard]] constexpr size_type capacity() const noexcept
     {
         return m_capacity;
     }
 
-    constexpr size_type size() const noexcept
+    [[nodiscard]] constexpr size_type size() const noexcept
     {
         return m_size;
     }
 
-    static shared_data* create(size_type capacity, const value_type* source, size_type size, const allocator_type& allocator = allocator_type())
+    [[nodiscard]] static shared_data* create(size_type capacity, const value_type* source, size_type size, const allocator_type& allocator = allocator_type())
     {        
-        static constexpr size_type _header_size = round_up(sizeof(shared_data));
-
         _raw_allocator a = allocator;
-        size_type allocation_size = sizeof(value_type) * capacity + _header_size;
+        size_type allocation_size = sizeof(value_type) * capacity + padded_header_size();
         auto raw = a.allocate(allocation_size);
         if (!raw)
             return nullptr; // allocator decides whether to throw or not
@@ -81,36 +75,39 @@ public:
         Destroyed
     };
 
+    [[nodiscard]] static const shared_data* add_ref(const shared_data* s) noexcept
+    {
+        assert(s);
+        s->m_refs++;
+        return s;
+    }
+
     static ReleaseResult release(shared_data* s, ReleaseMode mode)
     {
-        if (s)
+        assert(s);
+        
+        auto prev_refs = s->m_refs.fetch_sub(1, std::memory_order_acq_rel);
+        if (prev_refs == 1)
         {
-            auto prev_refs = s->m_refs.fetch_sub(1, std::memory_order_acq_rel);
-            if (prev_refs == 1)
+            // that was the last reference
+            s->m_size = 0;
+            if (mode == ReleaseMode::Destroy)
             {
-                // that was the last reference
-                s->m_size = 0;
-                if (mode == ReleaseMode::Destroy)
-                {
-                    static constexpr size_type _header_size = round_up(sizeof(shared_data));
-                    size_type allocation_size = sizeof(value_type) * s->m_capacity + _header_size;
+                size_type allocation_size = sizeof(value_type) * s->m_capacity + padded_header_size();
 
-                    // yep, no dtors!
-                    s->m_allocator.deallocate(reinterpret_cast<std::byte*>(s), allocation_size);
+                // yep, no dtors!
+                s->m_allocator.deallocate(reinterpret_cast<std::byte*>(s), allocation_size);
 
-                    return ReleaseResult::Destroyed;
-                }
-
-                // we want to keep this one for later usage to avoid extra allocation/deallocation
-                // just set reference count to 1 since we know now we have an exclusive ownership
-                s->m_refs++;
-                return ReleaseResult::MayRecycle;
+                return ReleaseResult::Destroyed;
             }
 
-            return ReleaseResult::MoreReferenses;
+            // we want to keep this one for later usage to avoid extra allocation/deallocation
+            // just set reference count to 1 since we know now we have an exclusive ownership
+            s->m_refs++;
+            return ReleaseResult::MayRecycle;
         }
 
-        return ReleaseResult::Destroyed;
+        return ReleaseResult::MoreReferenses;
     }
 
 private:
@@ -124,6 +121,12 @@ private:
     {
         U const g = alignof(value_type);
         return (x + g - 1) & (~(g - 1));
+    }
+
+    static constexpr size_type padded_header_size() noexcept
+    {
+        static constexpr size_type _header_size = round_up(sizeof(shared_data));
+        return _header_size;
     }
     
     ~shared_data() = default;
@@ -144,7 +147,7 @@ private:
     }
 
     _raw_allocator m_allocator;
-    std::atomic<size_type> m_refs;
+    mutable std::atomic<size_type> m_refs;
     size_type m_capacity;
     size_type m_size;
 };

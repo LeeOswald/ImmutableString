@@ -1,10 +1,18 @@
 
 #include "common.h"
 
+#include <iostream>
+
 #if !defined(NDEBUG) && defined(_MSC_VER)
 #include <crtdbg.h>
 #endif
 
+static void terminateHandler()
+{
+    std::cerr << "std::terminate() called\n";
+
+    std::abort();
+}
 
 int main(int argc, char** argv)
 {
@@ -17,6 +25,8 @@ int main(int argc, char** argv)
 #if ER_WINDOWS
     ::SetConsoleOutputCP(CP_UTF8);
 #endif
+
+    std::set_terminate(terminateHandler);
 
     ::testing::InitGoogleTest(&argc, argv);
 

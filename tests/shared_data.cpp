@@ -2,9 +2,8 @@
 
 #include <immutable_string/shared_data.hxx>
 
-#include <iostream>
 
-struct alignas(16) A // require some large alignment
+struct alignas(64) A // require some large alignment
 {
     int32_t v;
 };

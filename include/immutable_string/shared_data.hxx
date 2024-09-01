@@ -6,9 +6,9 @@
 #include <memory>
 #include <type_traits>
 
+
 //
-// shared buffer if PODs
-// no ctors, no dtors, only memcpy
+// shared raw bytes buffer
 //
 
 template <typename T, typename AllocatorT = std::allocator<T>>
@@ -27,6 +27,17 @@ public:
     shared_data& operator=(const shared_data&) = delete;
     shared_data(shared_data&&) = delete;
     shared_data& operator=(shared_data&&) = delete;
+
+    struct Deleter
+    {
+        void operator()(shared_data* p) noexcept
+        {
+            if (p) [[likely]]
+                p->release();
+        }
+    };
+
+    using Ptr = std::unique_ptr<shared_data, Deleter>;
 
     [[nodiscard]] constexpr T const* data() const noexcept
     {
@@ -50,64 +61,43 @@ public:
         return m_size;
     }
 
-    [[nodiscard]] static shared_data* create(size_type capacity, const value_type* source, size_type size, const allocator_type& allocator = allocator_type())
+    [[nodiscard]] constexpr const allocator_type get_allocator() const noexcept
+    {
+        return m_allocator;
+    }
+
+    [[nodiscard]] static Ptr create(size_type capacity, const value_type* source, size_type size, const allocator_type& allocator = allocator_type())
     {        
         _raw_allocator a = allocator;
         size_type allocation_size = sizeof(value_type) * capacity + padded_header_size();
         auto raw = a.allocate(allocation_size);
-        if (!raw)
-            return nullptr; // allocator decides whether to throw or not
+        if (!raw) [[unlikely]]
+            return Ptr(); // allocator decides whether to throw or not
 
-        auto header = new (static_cast<void*>(raw)) shared_data(std::move(a), capacity, source, size);
-        return header;
+        // buffer contents are left uninitialized, no ctors called 
+        return Ptr(new (static_cast<void*>(raw)) shared_data(std::move(a), capacity, source, size));
     }
 
-    enum class ReleaseMode
-    {
-        Destroy,
-        Recycle
-    };
-
-    enum class ReleaseResult
-    {
-        MoreReferenses,
-        MayRecycle,
-        Destroyed
-    };
-
-    [[nodiscard]] static const shared_data* add_ref(const shared_data* s) noexcept
-    {
-        assert(s);
-        s->m_refs++;
-        return s;
+    [[nodiscard]] Ptr add_ref() const noexcept
+    {   
+        m_refs++;
+        return Ptr(const_cast<shared_data*>(this));
     }
 
-    static ReleaseResult release(shared_data* s, ReleaseMode mode)
+    size_type release() noexcept
     {
-        assert(s);
-        
-        auto prev_refs = s->m_refs.fetch_sub(1, std::memory_order_acq_rel);
+        auto prev_refs = m_refs.fetch_sub(1, std::memory_order_acq_rel);
+        assert(prev_refs > 0);
         if (prev_refs == 1)
         {
             // that was the last reference
-            s->m_size = 0;
-            if (mode == ReleaseMode::Destroy)
-            {
-                size_type allocation_size = sizeof(value_type) * s->m_capacity + padded_header_size();
+            size_type allocation_size = sizeof(value_type) * m_capacity + padded_header_size();
 
-                // yep, no dtors!
-                s->m_allocator.deallocate(reinterpret_cast<std::byte*>(s), allocation_size);
-
-                return ReleaseResult::Destroyed;
-            }
-
-            // we want to keep this one for later usage to avoid extra allocation/deallocation
-            // just set reference count to 1 since we know now we have an exclusive ownership
-            s->m_refs++;
-            return ReleaseResult::MayRecycle;
+            // no dtors called
+            m_allocator.deallocate(reinterpret_cast<std::byte*>(this), allocation_size);
         }
 
-        return ReleaseResult::MoreReferenses;
+        return prev_refs - 1;
     }
 
 private:
@@ -116,17 +106,11 @@ private:
 
     using _raw_allocator = _rebind_alloc<allocator_type, std::byte>;
 
-    template <typename U>
-    static constexpr U round_up(U x) noexcept
-    {
-        U const g = alignof(value_type);
-        return (x + g - 1) & (~(g - 1));
-    }
-
     static constexpr size_type padded_header_size() noexcept
     {
-        static constexpr size_type _header_size = round_up(sizeof(shared_data));
-        return _header_size;
+        static constexpr size_type alignment = alignof(value_type) < alignof(void*) ? alignof(void*) : alignof(value_type);
+        static constexpr size_type header_size = (sizeof(shared_data) + alignment - 1) & (~(alignment - 1));
+        return header_size;
     }
     
     ~shared_data() = default;
@@ -142,7 +126,7 @@ private:
         if (size)
         {
             assert(!!source);
-            std::memcpy(data(), source, size * sizeof(value_type)); // yep, no copy ctors!
+            std::memcpy(data(), source, size * sizeof(value_type)); // no copy ctors called
         }
     }
 

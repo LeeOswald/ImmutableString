@@ -17,7 +17,7 @@ TEST(shared_data, create)
     auto a = SA::create(10, ka, sizeof(ka) / sizeof(ka[0]));
     ASSERT_TRUE(!!a);
     EXPECT_TRUE(!!a->data());
-    EXPECT_TRUE(!!const_cast<const SA*>(a)->data());
+    EXPECT_TRUE(!!const_cast<const SA*>(a.get())->data());
     EXPECT_EQ(a->capacity(), 10);
     EXPECT_EQ(a->size(), 3);
     auto it = a->data();
@@ -25,14 +25,10 @@ TEST(shared_data, create)
     EXPECT_EQ(it[1].v, -2);
     EXPECT_EQ(it[2].v, 3);
 
-    auto dr = SA::release(a, SA::ReleaseMode::Recycle);
-    EXPECT_EQ(dr, SA::ReleaseResult::MayRecycle);
-    EXPECT_EQ(a->capacity(), 10);
-    EXPECT_EQ(a->size(), 0);
-    dr = SA::release(a, SA::ReleaseMode::Recycle);
-    EXPECT_EQ(dr, SA::ReleaseResult::MayRecycle);
-    EXPECT_EQ(a->capacity(), 10);
-    EXPECT_EQ(a->size(), 0);
-    dr = SA::release(a, SA::ReleaseMode::Destroy);
-    EXPECT_EQ(dr, SA::ReleaseResult::Destroyed);
+    auto r = a->add_ref();
+    auto refs = r->release();
+    EXPECT_EQ(refs, 1);
+
+    refs = a->release();
+    EXPECT_EQ(refs, 0);
 }

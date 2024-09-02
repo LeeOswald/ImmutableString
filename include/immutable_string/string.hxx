@@ -39,25 +39,23 @@ public:
 
     ~basic_immutable_string() = default;
 
-    constexpr basic_immutable_string() noexcept(std::is_nothrow_default_constructible_v<allocator_type>)
+    constexpr basic_immutable_string() noexcept
         : m_size(IsNullTerminated)
         , m_str(_empty_str())
         , m_storage()
-        , m_allocator()
     {
     }
 
-    [[nodiscard]] static basic_immutable_string from_string_literal(const_pointer source, const allocator_type& a = allocator_type()) noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
+    [[nodiscard]] static basic_immutable_string from_string_literal(const_pointer source, const allocator_type& a = allocator_type()) noexcept
     {
         assert(source);
         size_type size = traits_type::length(source);
         assert(size <= max_size());
 
-        return basic_immutable_string(nullptr, source, _check_size(size) | IsNullTerminated, a);
+        return basic_immutable_string(nullptr, source, _check_size(size) | IsNullTerminated);
     }
 
     basic_immutable_string(const_pointer source, size_type size = size_type(-1), const allocator_type& a = allocator_type())
-        : m_allocator(a)
     {
         if (source && *source) [[likely]]
         {
@@ -85,11 +83,11 @@ public:
         }
     }
 
-    [[nodiscard]] static basic_immutable_string attach(_storage* sb) noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
+    [[nodiscard]] static basic_immutable_string attach(_storage* sb) noexcept
     {
         // no add_ref() called
         assert(sb);
-        return basic_immutable_string(sb, sb->data(), sb->size(), sb->get_allocator());
+        return basic_immutable_string(sb, sb->data(), sb->size());
     }
 
     [[nodiscard]] _storage* detach() noexcept
@@ -98,8 +96,6 @@ public:
         m_size = IsNullTerminated;
         m_str = _empty_str();
         auto p = m_storage.release();
-        m_storage.reset();
-
         return p;
     }
 
@@ -108,11 +104,10 @@ public:
         return !!m_storage;
     }
 
-    basic_immutable_string(const basic_immutable_string& other) noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
+    basic_immutable_string(const basic_immutable_string& other) noexcept
         : m_size(other.m_size)
         , m_str(other.m_str)
         , m_storage(other.m_storage ? other.m_storage->add_ref() : nullptr)
-        , m_allocator(other.m_allocator)
     {
         assert((m_size & SizeMask) == 0 || !!m_str);
     }
@@ -145,22 +140,30 @@ public:
         return *this;
     }
 
-    void swap(basic_immutable_string& other) noexcept(std::is_nothrow_swappable_v<allocator_type>)
+    void swap(basic_immutable_string& other) noexcept
     {
         using std::swap;
         m_storage.swap(other.m_storage);
         swap(m_str, other.m_str);
         swap(m_size, other.m_size);
-        swap(m_allocator, other.m_allocator);
     }
 
-    friend void swap(basic_immutable_string& a, basic_immutable_string& b) noexcept(std::is_nothrow_swappable_v<allocator_type>)
+    friend void swap(basic_immutable_string& a, basic_immutable_string& b) noexcept
     {
         a.swap(b);
     }
 
     [[nodiscard]] constexpr const_pointer c_str() const noexcept
     {
+        if (m_size & IsNullTerminated)
+            return m_str;
+
+        assert(!empty());
+        auto cstr = _make_cstr();
+        auto data = cstr->data();
+        auto size = cstr->size() | IsNullTerminated;
+        _subvert_data(cstr, data, size);
+
         return m_str;
     }
 
@@ -215,18 +218,17 @@ public:
         if (!length)
             return basic_immutable_string();
 
-        return basic_immutable_string(m_storage ? m_storage->add_ref().get() : nullptr, m_str + start, length, m_allocator);
+        return basic_immutable_string(m_storage ? m_storage->add_ref().release() : nullptr, m_str + start, length);
     }
 
 private:
     static size_type const IsNullTerminated = size_type(1) << (std::numeric_limits<size_type>::digits - 1);
     static size_type const SizeMask = IsNullTerminated - 1;
 
-    constexpr basic_immutable_string(_storage* stg, const_pointer data, size_type size, const allocator_type& a) noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
+    constexpr basic_immutable_string(_storage* stg, const_pointer data, size_type size) noexcept
         : m_size(size)
         , m_str(data)
         , m_storage(stg) // no add_ref()
-        , m_allocator(a)
     {
     }
 
@@ -244,10 +246,31 @@ private:
         return &_e;
     }
 
-    size_type m_size;
-    const_pointer m_str;
-    _storage_ptr m_storage;
-    allocator_type m_allocator;
+    _storage_ptr _make_cstr() const
+    {
+        auto len = size();
+        auto storage = _storage::create((len + 1) * sizeof(value_type), data(), len, m_storage ? m_storage->get_allocator() : allocator_type());
+        if (!storage) [[unlikely]]
+            throw std::bad_alloc();
+                
+        // _storage is always '\0'-terminated
+        auto data = storage->data();
+        data[len] = value_type{};
+
+        return storage;
+    }
+
+    void _subvert_data(_storage_ptr& stg, const_pointer data, size_type size) const noexcept(std::is_nothrow_swappable_v<_storage_ptr>)
+    {
+        // the purpose of this is to replace self with a null-terminated string in .c_str() which is const
+        m_storage.swap(stg);
+        m_size = size;
+        m_str = data;
+    }
+
+    mutable size_type m_size;
+    mutable const_pointer m_str;
+    mutable _storage_ptr m_storage;
 };
 
 

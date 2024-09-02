@@ -37,16 +37,20 @@ public:
 
     static constexpr size_type npos = size_type(-1);
 
-    ~basic_immutable_string() = default;
+    ~basic_immutable_string()
+    {
+        if (m_storage)
+            m_storage->release();
+    }
 
     constexpr basic_immutable_string() noexcept
         : m_size(IsNullTerminated)
         , m_str(_empty_str())
-        , m_storage()
+        , m_storage(nullptr)
     {
     }
 
-    [[nodiscard]] static basic_immutable_string from_string_literal(const_pointer source, const allocator_type& a = allocator_type()) noexcept
+    [[nodiscard]] static basic_immutable_string from_string_literal(const_pointer source) noexcept
     {
         assert(source);
         size_type size = traits_type::length(source);
@@ -68,7 +72,7 @@ public:
             if (!storage) [[unlikely]]
                 throw std::bad_alloc();
             
-            m_storage.swap(storage); 
+            m_storage = storage.release(); 
             
             auto data = m_storage->data();
             // _storage is always '\0'-terminated
@@ -78,6 +82,7 @@ public:
         }
         else [[unlikely]]
         {
+            m_storage = nullptr;
             m_size = IsNullTerminated;
             m_str = _empty_str();
         }
@@ -95,7 +100,8 @@ public:
         // no release() called
         m_size = IsNullTerminated;
         m_str = _empty_str();
-        auto p = m_storage.release();
+        auto p = m_storage;
+        m_storage = nullptr;
         return p;
     }
 
@@ -107,7 +113,7 @@ public:
     basic_immutable_string(const basic_immutable_string& other) noexcept
         : m_size(other.m_size)
         , m_str(other.m_str)
-        , m_storage(other.m_storage ? other.m_storage->add_ref() : nullptr)
+        , m_storage(other.m_storage ? other.m_storage->add_ref().release() : nullptr)
     {
         assert((m_size & SizeMask) == 0 || !!m_str);
     }
@@ -143,7 +149,7 @@ public:
     void swap(basic_immutable_string& other) noexcept
     {
         using std::swap;
-        m_storage.swap(other.m_storage);
+        swap(m_storage, other.m_storage);
         swap(m_str, other.m_str);
         swap(m_size, other.m_size);
     }
@@ -199,7 +205,7 @@ public:
 
     void clear() noexcept
     {
-        m_storage.reset();
+        m_storage = nullptr;
         m_str = _empty_str();
         m_size = IsNullTerminated;
     }
@@ -260,17 +266,20 @@ private:
         return storage;
     }
 
-    void _subvert_data(_storage_ptr& stg, const_pointer data, size_type size) const noexcept(std::is_nothrow_swappable_v<_storage_ptr>)
+    void _subvert_data(_storage_ptr& stg, const_pointer data, size_type size) const noexcept
     {
         // the purpose of this is to replace self with a null-terminated string in .c_str() which is const
-        m_storage.swap(stg);
+        if (m_storage)
+            m_storage->release();
+
+        m_storage = stg.release();
         m_size = size;
         m_str = data;
     }
 
     mutable size_type m_size;
     mutable const_pointer m_str;
-    mutable _storage_ptr m_storage;
+    mutable _storage* m_storage;
 };
 
 

@@ -254,6 +254,8 @@ public:
 
         if (!length)
             return basic_immutable_string();
+        else if (length < ShortStringSize)
+            return basic_immutable_string(_get_string() + start, length); // SSO
 
         return basic_immutable_string(_get_storage_add_ref(), _get_string() + start, length);
     }

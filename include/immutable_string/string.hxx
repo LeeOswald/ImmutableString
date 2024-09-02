@@ -23,6 +23,20 @@ private:
     using _storage = shared_data<CharT, AllocatorT>;
     using _storage_ptr = typename _storage::Ptr;
 
+    struct _ptrs
+    {
+        typename _allocator_traits::const_pointer str;
+        _storage* storage;
+    };
+
+    static constexpr typename _allocator_traits::size_type ShortStringSize = sizeof(_ptrs) / sizeof(CharT);
+
+    union _sso_storage
+    {
+        _ptrs ptrs;
+        CharT short_string[ShortStringSize];
+    };
+
 public:
     using traits_type = TraitsT;
     using allocator_type = AllocatorT;
@@ -39,15 +53,14 @@ public:
 
     ~basic_immutable_string()
     {
-        if (m_storage)
-            m_storage->release();
+        _release();
     }
 
     constexpr basic_immutable_string() noexcept
         : m_size(IsNullTerminated)
-        , m_str(_empty_str())
-        , m_storage(nullptr)
     {
+        m_storage.ptrs.str = _empty_str();
+        m_storage.ptrs.storage = nullptr;
     }
 
     [[nodiscard]] static basic_immutable_string from_string_literal(const_pointer source) noexcept
@@ -67,24 +80,33 @@ public:
                 size = traits_type::length(source);
 
             auto source_len = _check_size(size);
-            
-            auto storage = _storage::create((source_len + 1) * sizeof(value_type), source, source_len, a);
-            if (!storage) [[unlikely]]
-                throw std::bad_alloc();
-            
-            m_storage = storage.release(); 
-            
-            auto data = m_storage->data();
-            // _storage is always '\0'-terminated
-            data[source_len] = value_type{};
-            m_str = data;
-            m_size = source_len | IsNullTerminated;
+
+            if (source_len < ShortStringSize)
+            {
+                // short string optimization
+                std::memcpy(m_storage.short_string, source, source_len);
+                m_storage.short_string[source_len] = value_type{}; // \0
+                m_size = source_len | IsShortString | IsNullTerminated;
+            }
+            else
+            {
+                auto storage = _storage::create((source_len + 1) * sizeof(value_type), source, source_len, a);
+                if (!storage) [[unlikely]]
+                    throw std::bad_alloc();
+
+                m_storage.ptrs.storage = storage.release();
+
+                auto data = m_storage.ptrs.storage->data();
+                data[source_len] = value_type{}; // \0
+                m_storage.ptrs.str = data;
+                m_size = source_len | IsNullTerminated;
+            }
         }
         else [[unlikely]]
         {
-            m_storage = nullptr;
+            m_storage.ptrs.storage = nullptr;
+            m_storage.ptrs.str = _empty_str();
             m_size = IsNullTerminated;
-            m_str = _empty_str();
         }
     }
 
@@ -99,23 +121,31 @@ public:
     {
         // no release() called
         m_size = IsNullTerminated;
-        m_str = _empty_str();
-        auto p = m_storage;
-        m_storage = nullptr;
+        if (is_short())
+            return nullptr;
+
+        m_storage.ptrs.str = _empty_str();
+        auto p = m_storage.ptrs.storage;
+        m_storage.ptrs.storage = nullptr;
         return p;
     }
 
     [[nodiscard]] constexpr bool is_shared() const noexcept
     {
-        return !!m_storage;
+        return !is_short() && !!m_storage.ptrs.storage;
+    }
+
+    [[nodiscard]] constexpr bool is_short() const noexcept
+    {
+        return (m_size & IsShortString) != 0;
     }
 
     basic_immutable_string(const basic_immutable_string& other) noexcept
         : m_size(other.m_size)
-        , m_str(other.m_str)
-        , m_storage(other.m_storage ? other.m_storage->add_ref().release() : nullptr)
     {
-        assert((m_size & SizeMask) == 0 || !!m_str);
+        // this will copy m_storage.short_string either
+        m_storage.ptrs.storage = other.m_storage.ptrs.storage;
+        m_storage.ptrs.str = other.m_storage.ptrs.str;
     }
 
     basic_immutable_string& operator=(const basic_immutable_string& other) noexcept
@@ -149,8 +179,9 @@ public:
     void swap(basic_immutable_string& other) noexcept
     {
         using std::swap;
-        swap(m_storage, other.m_storage);
-        swap(m_str, other.m_str);
+        // this will swap m_storage.short_string either
+        swap(m_storage.ptrs.str, other.m_storage.ptrs.str);
+        swap(m_storage.ptrs.storage, other.m_storage.ptrs.storage);
         swap(m_size, other.m_size);
     }
 
@@ -162,7 +193,7 @@ public:
     [[nodiscard]] constexpr const_pointer c_str() const noexcept
     {
         if (m_size & IsNullTerminated)
-            return m_str;
+            return _get_string();
 
         assert(!empty());
         auto cstr = _make_cstr();
@@ -170,7 +201,7 @@ public:
         auto size = cstr->size() | IsNullTerminated;
         _subvert_data(cstr, data, size);
 
-        return m_str;
+        return _get_string();
     }
 
     [[nodiscard]] constexpr size_type length() const noexcept
@@ -180,7 +211,7 @@ public:
 
     [[nodiscard]] constexpr const_pointer data() const noexcept
     {
-        return m_str;
+        return _get_string();
     }
 
     [[nodiscard]] constexpr size_type size() const noexcept
@@ -205,8 +236,8 @@ public:
 
     void clear() noexcept
     {
-        m_storage = nullptr;
-        m_str = _empty_str();
+        m_storage.ptrs.storage = nullptr;
+        m_storage.ptrs.str = _empty_str();
         m_size = IsNullTerminated;
     }
 
@@ -224,20 +255,22 @@ public:
         if (!length)
             return basic_immutable_string();
 
-        return basic_immutable_string(m_storage ? m_storage->add_ref().release() : nullptr, m_str + start, length);
+        return basic_immutable_string(_get_storage_add_ref(), _get_string() + start, length);
     }
 
 private:
     static size_type const IsNullTerminated = size_type(1) << (std::numeric_limits<size_type>::digits - 1);
-    static size_type const SizeMask = IsNullTerminated - 1;
+    static size_type const IsShortString = IsNullTerminated >> 1;
+    static size_type const SizeMask = IsShortString - 1;
 
     constexpr basic_immutable_string(_storage* stg, const_pointer data, size_type size) noexcept
         : m_size(size)
-        , m_str(data)
-        , m_storage(stg) // no add_ref()
     {
+        assert(!is_short());
+        m_storage.ptrs.str = data;
+        m_storage.ptrs.storage = stg; // no add_ref()
     }
-
+    
     static size_type _check_size(size_type size)
     {
         if (size > max_size()) [[unlikely]]
@@ -252,10 +285,19 @@ private:
         return &_e;
     }
 
+    allocator_type _get_allocator() const noexcept(std::is_nothrow_copy_constructible_v<allocator_type>)
+    {
+        auto stg = _get_storage();
+        if (stg)
+            return stg->get_allocator();
+
+        return allocator_type();
+    }
+
     _storage_ptr _make_cstr() const
     {
         auto len = size();
-        auto storage = _storage::create((len + 1) * sizeof(value_type), data(), len, m_storage ? m_storage->get_allocator() : allocator_type());
+        auto storage = _storage::create((len + 1) * sizeof(value_type), data(), len, _get_allocator());
         if (!storage) [[unlikely]]
             throw std::bad_alloc();
                 
@@ -269,17 +311,47 @@ private:
     void _subvert_data(_storage_ptr& stg, const_pointer data, size_type size) const noexcept
     {
         // the purpose of this is to replace self with a null-terminated string in .c_str() which is const
-        if (m_storage)
-            m_storage->release();
+        _release();
 
-        m_storage = stg.release();
         m_size = size;
-        m_str = data;
+        m_storage.ptrs.storage = stg.release();
+        m_storage.ptrs.str = data;
     }
 
+    void _release() const noexcept
+    {
+        if (!is_short() && m_storage.ptrs.storage)
+            m_storage.ptrs.storage->release();
+    }
+
+    constexpr _storage* _get_storage() const noexcept
+    {
+        if (!is_short())
+            return m_storage.ptrs.storage;
+
+        return nullptr;
+    }
+
+    constexpr _storage* _get_storage_add_ref() const noexcept
+    {
+        if (!is_short() && m_storage.ptrs.storage)
+            return m_storage.ptrs.storage->add_ref().release();
+
+        return nullptr;
+    }
+
+    constexpr const_pointer _get_string() const noexcept
+    {
+        if (!is_short())
+            return m_storage.ptrs.str;
+
+        return m_storage.short_string;
+    }
+
+    // omg, yes, they're all mutable
+    // and all of this is because of .c_str() constness 
     mutable size_type m_size;
-    mutable const_pointer m_str;
-    mutable _storage* m_storage;
+    mutable _sso_storage m_storage;
 };
 
 

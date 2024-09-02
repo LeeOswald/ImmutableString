@@ -3,14 +3,14 @@
 #include <immutable_string/string.hxx>
 
 static const char* const EMPTY_STRING = "";
-static const char* const TEST_STRING = "test_string";
-static const size_t TEST_STRING_LEN = std::strlen(TEST_STRING);
+static const char* const SHORT_STRING = "test_string_123"; // suitable for SSO
+static const size_t SHORT_STRING_LEN = std::strlen(SHORT_STRING);
 static const char EMBEDDED_NULLS_STRING[] = { '0', '1', '2', '3', '4', '\0', '5', '6', '7', '8', '9', '\0', 'a', 'b', 'c', 'd', 'e', 'f' };
 static const size_t EMBEDDED_NULLS_STRING_LEN = sizeof(EMBEDDED_NULLS_STRING);
 
-static const char* const LONG_STRING = "Some very long string";
+static const char* const LONG_STRING = "Some very long string, can not fit into SSO buf";
 static const size_t LONG_STRING_LEN = std::strlen(LONG_STRING);
-static const char* const LONG_STRING_PART = "Some very";
+static const char* const LONG_STRING_PART = "Some very long string, can not ";
 static const size_t LONG_STRING_PART_LEN = std::strlen(LONG_STRING_PART);
 static const char* const LONG_STRING_PART2 = "Some ";
 static const size_t LONG_STRING_PART_LEN2 = std::strlen(LONG_STRING_PART2);
@@ -28,6 +28,7 @@ TEST(immutable_string, create)
         EXPECT_EQ(s.data(), s.c_str());
         EXPECT_STREQ(s.c_str(), "");
         EXPECT_FALSE(s.is_shared());
+        EXPECT_FALSE(s.is_short());
         EXPECT_TRUE(s.has_null_terminator());
     }
 
@@ -40,18 +41,20 @@ TEST(immutable_string, create)
         EXPECT_EQ(s.c_str(), EMPTY_STRING);
         EXPECT_EQ(s.data(), s.c_str());
         EXPECT_FALSE(s.is_shared());
+        EXPECT_FALSE(s.is_short());
         EXPECT_TRUE(s.has_null_terminator());
     }
 
     // from string literal
     {
-        auto s = immutable_string::from_string_literal(TEST_STRING);
+        auto s = immutable_string::from_string_literal(SHORT_STRING);
         EXPECT_FALSE(s.empty());
-        EXPECT_EQ(s.length(), TEST_STRING_LEN);
-        EXPECT_EQ(s.size(), TEST_STRING_LEN);
-        EXPECT_EQ(s.c_str(), TEST_STRING);
+        EXPECT_EQ(s.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(s.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(s.c_str(), SHORT_STRING);
         EXPECT_EQ(s.data(), s.c_str());
         EXPECT_FALSE(s.is_shared());
+        EXPECT_FALSE(s.is_short());
         EXPECT_TRUE(s.has_null_terminator());
     }
 
@@ -65,6 +68,7 @@ TEST(immutable_string, create)
         EXPECT_EQ(s.data(), s.c_str());
         EXPECT_STREQ(s.c_str(), "");
         EXPECT_FALSE(s.is_shared());
+        EXPECT_FALSE(s.is_short());
         EXPECT_TRUE(s.has_null_terminator());
     }
 
@@ -78,32 +82,35 @@ TEST(immutable_string, create)
         EXPECT_STREQ(s.c_str(), EMPTY_STRING);
         EXPECT_EQ(s.data(), s.c_str());
         EXPECT_FALSE(s.is_shared());
+        EXPECT_FALSE(s.is_short());
         EXPECT_TRUE(s.has_null_terminator());
     }
 
-    // from C string
+    // from short C string
     {
-        immutable_string s(TEST_STRING);
+        immutable_string s(SHORT_STRING);
         EXPECT_FALSE(s.empty());
-        EXPECT_EQ(s.length(), TEST_STRING_LEN);
-        EXPECT_EQ(s.size(), TEST_STRING_LEN);
-        EXPECT_NE(s.c_str(), TEST_STRING);
-        EXPECT_STREQ(s.c_str(), TEST_STRING);
+        EXPECT_EQ(s.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(s.size(), SHORT_STRING_LEN);
+        EXPECT_NE(s.c_str(), SHORT_STRING);
+        EXPECT_STREQ(s.c_str(), SHORT_STRING);
         EXPECT_EQ(s.data(), s.c_str());
-        EXPECT_TRUE(s.is_shared());
+        EXPECT_FALSE(s.is_shared());
+        EXPECT_TRUE(s.is_short());
         EXPECT_TRUE(s.has_null_terminator());
     }
 
     // from C string with length
     {
-        immutable_string s(TEST_STRING, TEST_STRING_LEN);
+        immutable_string s(LONG_STRING, LONG_STRING_LEN);
         EXPECT_FALSE(s.empty());
-        EXPECT_EQ(s.length(), TEST_STRING_LEN);
-        EXPECT_EQ(s.size(), TEST_STRING_LEN);
-        EXPECT_NE(s.c_str(), TEST_STRING);
-        EXPECT_STREQ(s.c_str(), TEST_STRING);
+        EXPECT_EQ(s.length(), LONG_STRING_LEN);
+        EXPECT_EQ(s.size(), LONG_STRING_LEN);
+        EXPECT_NE(s.c_str(), LONG_STRING);
+        EXPECT_STREQ(s.c_str(), LONG_STRING);
         EXPECT_EQ(s.data(), s.c_str());
         EXPECT_TRUE(s.is_shared());
+        EXPECT_FALSE(s.is_short());
         EXPECT_TRUE(s.has_null_terminator());
     }
 
@@ -111,6 +118,7 @@ TEST(immutable_string, create)
     {
         immutable_string s(LONG_STRING, LONG_STRING_PART_LEN);
         EXPECT_TRUE(s.has_null_terminator());
+        EXPECT_FALSE(s.is_short());
         EXPECT_FALSE(s.empty());
         EXPECT_EQ(s.length(), LONG_STRING_PART_LEN);
         EXPECT_EQ(s.size(), s.length());
@@ -119,6 +127,7 @@ TEST(immutable_string, create)
         EXPECT_STREQ(s.c_str(), LONG_STRING_PART);
         EXPECT_EQ(s.data(), s.c_str());
         EXPECT_TRUE(s.is_shared());
+        EXPECT_FALSE(s.is_short());
     }
 
     // from C string with embedded nulls
@@ -132,11 +141,12 @@ TEST(immutable_string, create)
         EXPECT_STREQ(s.c_str(), std::string(EMBEDDED_NULLS_STRING).c_str());
         EXPECT_EQ(0, std::memcmp(s.data(), EMBEDDED_NULLS_STRING, EMBEDDED_NULLS_STRING_LEN));
         EXPECT_TRUE(s.is_shared());
+        EXPECT_FALSE(s.is_short());
     }
 
     // from string data
     {
-        immutable_string src(TEST_STRING);
+        immutable_string src(LONG_STRING);
         auto dst = immutable_string::attach(src.detach());
 
         EXPECT_TRUE(src.empty());
@@ -148,12 +158,13 @@ TEST(immutable_string, create)
         EXPECT_TRUE(!src.is_shared());
 
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
-        EXPECT_STREQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), LONG_STRING_LEN);
+        EXPECT_EQ(dst.size(), LONG_STRING_LEN);
+        EXPECT_NE(dst.c_str(), LONG_STRING);
+        EXPECT_STREQ(dst.c_str(), LONG_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
         EXPECT_TRUE(dst.is_shared());
+        EXPECT_FALSE(dst.is_short());
     }
 }
 
@@ -223,112 +234,180 @@ TEST(immutable_string, copy)
 
     // copy-construct from string made from string literal
     {
-        auto src = immutable_string::from_string_literal(TEST_STRING);
+        auto src = immutable_string::from_string_literal(SHORT_STRING);
         immutable_string dst(src);
 
         EXPECT_FALSE(src.empty());
-        EXPECT_EQ(src.length(), TEST_STRING_LEN);
-        EXPECT_EQ(src.size(), TEST_STRING_LEN);
-        EXPECT_EQ(src.c_str(), TEST_STRING);
+        EXPECT_EQ(src.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(src.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(src.c_str(), SHORT_STRING);
         EXPECT_EQ(src.data(), src.c_str());
 
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
         EXPECT_EQ(dst.data(), src.data());
 
         dst = dst;
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
     }
 
     // copy-assign from string made from string literal
     {
-        auto src = immutable_string::from_string_literal(TEST_STRING);
+        auto src = immutable_string::from_string_literal(SHORT_STRING);
         immutable_string dst("not this");
         dst = src;
 
         EXPECT_FALSE(src.empty());
-        EXPECT_EQ(src.length(), TEST_STRING_LEN);
-        EXPECT_EQ(src.size(), TEST_STRING_LEN);
-        EXPECT_EQ(src.c_str(), TEST_STRING);
+        EXPECT_EQ(src.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(src.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(src.c_str(), SHORT_STRING);
         EXPECT_EQ(src.data(), src.c_str());
 
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
         EXPECT_EQ(dst.data(), src.data());
 
         dst = dst;
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
     }
 
-    // copy-construct from non-empty string
+    // copy-construct from short string
     {
-        immutable_string src(TEST_STRING);
+        immutable_string src(SHORT_STRING);
         immutable_string dst(src);
 
+        EXPECT_TRUE(src.is_short());
         EXPECT_FALSE(src.empty());
-        EXPECT_EQ(src.length(), TEST_STRING_LEN);
-        EXPECT_EQ(src.size(), TEST_STRING_LEN);
-        EXPECT_NE(src.c_str(), TEST_STRING);
+        EXPECT_EQ(src.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(src.size(), SHORT_STRING_LEN);
+        EXPECT_NE(src.c_str(), SHORT_STRING);
         EXPECT_EQ(src.data(), src.c_str());
 
+        EXPECT_TRUE(dst.is_short());
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_NE(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
-        EXPECT_EQ(dst.data(), src.data());
+        EXPECT_NE(dst.data(), src.data());
 
         dst = dst;
+        EXPECT_TRUE(dst.is_short());
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_NE(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
     }
 
-    // copy-assign from non-empty string
+    // copy-assign from short string
     {
-        immutable_string src(TEST_STRING);
+        immutable_string src(SHORT_STRING);
         immutable_string dst("not this");
         dst = src;
 
+        EXPECT_TRUE(src.is_short());
         EXPECT_FALSE(src.empty());
-        EXPECT_EQ(src.length(), TEST_STRING_LEN);
-        EXPECT_EQ(src.size(), TEST_STRING_LEN);
-        EXPECT_NE(src.c_str(), TEST_STRING);
+        EXPECT_EQ(src.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(src.size(), SHORT_STRING_LEN);
+        EXPECT_NE(src.c_str(), SHORT_STRING);
         EXPECT_EQ(src.data(), src.c_str());
 
+        EXPECT_TRUE(dst.is_short());
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_NE(dst.c_str(), SHORT_STRING);
+        EXPECT_EQ(dst.data(), dst.c_str());
+
+        EXPECT_NE(dst.data(), src.data());
+
+        dst = dst;
+        EXPECT_TRUE(dst.is_short());
+        EXPECT_FALSE(dst.empty());
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_NE(dst.c_str(), SHORT_STRING);
+        EXPECT_EQ(dst.data(), dst.c_str());
+    }
+
+    // copy-construct from long string
+    {
+        immutable_string src(LONG_STRING);
+        immutable_string dst(src);
+
+        EXPECT_FALSE(src.is_short());
+        EXPECT_FALSE(src.empty());
+        EXPECT_EQ(src.length(), LONG_STRING_LEN);
+        EXPECT_EQ(src.size(), LONG_STRING_LEN);
+        EXPECT_NE(src.c_str(), LONG_STRING);
+        EXPECT_EQ(src.data(), src.c_str());
+
+        EXPECT_FALSE(dst.is_short());
+        EXPECT_FALSE(dst.empty());
+        EXPECT_EQ(dst.length(), LONG_STRING_LEN);
+        EXPECT_EQ(dst.size(), LONG_STRING_LEN);
+        EXPECT_NE(dst.c_str(), LONG_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
         EXPECT_EQ(dst.data(), src.data());
 
         dst = dst;
+        EXPECT_FALSE(dst.is_short());
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), LONG_STRING_LEN);
+        EXPECT_EQ(dst.size(), LONG_STRING_LEN);
+        EXPECT_NE(dst.c_str(), LONG_STRING);
+        EXPECT_EQ(dst.data(), dst.c_str());
+
+    }
+
+    // copy-assign from long string
+    {
+        immutable_string src(LONG_STRING);
+        immutable_string dst("not this");
+        dst = src;
+
+        EXPECT_FALSE(src.is_short());
+        EXPECT_FALSE(src.empty());
+        EXPECT_EQ(src.length(), LONG_STRING_LEN);
+        EXPECT_EQ(src.size(), LONG_STRING_LEN);
+        EXPECT_NE(src.c_str(), LONG_STRING);
+        EXPECT_EQ(src.data(), src.c_str());
+
+        EXPECT_FALSE(dst.is_short());
+        EXPECT_FALSE(dst.empty());
+        EXPECT_EQ(dst.length(), LONG_STRING_LEN);
+        EXPECT_EQ(dst.size(), LONG_STRING_LEN);
+        EXPECT_NE(dst.c_str(), LONG_STRING);
+        EXPECT_EQ(dst.data(), dst.c_str());
+
+        EXPECT_EQ(dst.data(), src.data());
+
+        dst = dst;
+        EXPECT_FALSE(dst.is_short());
+        EXPECT_FALSE(dst.empty());
+        EXPECT_EQ(dst.length(), LONG_STRING_LEN);
+        EXPECT_EQ(dst.size(), LONG_STRING_LEN);
+        EXPECT_NE(dst.c_str(), LONG_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
     }
 }
@@ -398,7 +477,7 @@ TEST(immutable_string, move)
 
     // move-construct from string made from string literal
     {
-        auto src = immutable_string::from_string_literal(TEST_STRING);
+        auto src = immutable_string::from_string_literal(SHORT_STRING);
         immutable_string dst(std::move(src));
 
         EXPECT_TRUE(src.empty());
@@ -409,22 +488,22 @@ TEST(immutable_string, move)
         EXPECT_STREQ(src.c_str(), "");
 
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
         dst = std::move(dst);
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
     }
 
     // move-assign from from string made from string literal
     {
-        auto src = immutable_string::from_string_literal(TEST_STRING);
+        auto src = immutable_string::from_string_literal(SHORT_STRING);
         immutable_string dst("not this");
         dst = std::move(src);
 
@@ -436,22 +515,22 @@ TEST(immutable_string, move)
         EXPECT_STREQ(src.c_str(), "");
 
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
         dst = std::move(dst);
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
     }
 
     // move-construct from non-empty string
     {
-        immutable_string src(TEST_STRING);
+        immutable_string src(SHORT_STRING);
         immutable_string dst(std::move(src));
 
         EXPECT_TRUE(src.empty());
@@ -462,22 +541,22 @@ TEST(immutable_string, move)
         EXPECT_STREQ(src.c_str(), "");
 
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_NE(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
         dst = std::move(dst);
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_NE(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
     }
 
     // move-assign from non-empty string
     {
-        immutable_string src(TEST_STRING);
+        immutable_string src(SHORT_STRING);
         immutable_string dst("not this");
         dst = std::move(src);
 
@@ -489,16 +568,16 @@ TEST(immutable_string, move)
         EXPECT_STREQ(src.c_str(), "");
 
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_NE(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
 
         dst = std::move(dst);
         EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), TEST_STRING_LEN);
-        EXPECT_EQ(dst.size(), TEST_STRING_LEN);
-        EXPECT_NE(dst.c_str(), TEST_STRING);
+        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
+        EXPECT_EQ(dst.size(), SHORT_STRING_LEN);
+        EXPECT_NE(dst.c_str(), SHORT_STRING);
         EXPECT_EQ(dst.data(), dst.c_str());
     }
 }

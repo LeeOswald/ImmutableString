@@ -3,8 +3,142 @@
 #include "shared_data.hxx"
 
 #include <exception>
+#include <iterator>
 #include <limits>
+#include <memory.h>
 #include <string>
+
+namespace detail
+{
+
+template <class StringT>
+struct string_const_iterator
+{
+    using iterator_concept = std::contiguous_iterator_tag;
+    using iterator_category = std::random_access_iterator_tag;
+    using value_type = typename StringT::value_type;
+    using difference_type = typename StringT::difference_type;
+    using pointer = typename StringT::const_pointer;
+    using reference = const value_type&;
+
+    constexpr string_const_iterator(pointer ptr = pointer{}) noexcept
+        : _ptr(ptr)
+    {
+    }
+
+    [[nodiscard]] constexpr reference operator*() const noexcept
+    {
+        assert(_ptr);
+        return *_ptr;
+    }
+
+    [[nodiscard]] constexpr pointer operator->() const noexcept 
+    {
+        return std::pointer_traits<pointer>::pointer_to(**this);
+    }
+
+    constexpr string_const_iterator& operator++() noexcept
+    {
+        assert(_ptr);
+        ++_ptr;
+        return *this;
+    }
+
+    constexpr string_const_iterator operator++(int) noexcept 
+    {
+        string_const_iterator tmp = *this;
+        ++*this;
+        return tmp;
+    }
+
+    constexpr string_const_iterator& operator--() noexcept
+    {
+        assert(_ptr);
+        --_ptr;
+        return *this;
+    }
+
+    constexpr string_const_iterator operator--(int) noexcept
+    {
+        string_const_iterator tmp = *this;
+        --*this;
+        return tmp;
+    }
+
+    constexpr string_const_iterator& operator+=(const difference_type offset) noexcept 
+    {
+        _ptr += offset;
+        return *this;
+    }
+
+    [[nodiscard]] constexpr string_const_iterator operator+(const difference_type offset) const noexcept 
+    {
+        string_const_iterator tmp = *this;
+        tmp += offset;
+        return tmp;
+    }
+
+    [[nodiscard]] friend constexpr string_const_iterator operator+(const difference_type offset, string_const_iterator next) noexcept 
+    {
+        next += offset;
+        return next;
+    }
+
+    constexpr string_const_iterator& operator-=(const difference_type offset) noexcept 
+    {
+        return *this += -offset;
+    }
+
+    [[nodiscard]] constexpr string_const_iterator operator-(const difference_type offset) const noexcept 
+    {
+        string_const_iterator tmp = *this;
+        tmp -= offset;
+        return tmp;
+    }
+
+    [[nodiscard]] constexpr difference_type operator-(const string_const_iterator& right) const noexcept 
+    {
+        return _ptr - right._ptr;
+    }
+
+    [[nodiscard]] constexpr reference operator[](const difference_type offset) const noexcept 
+    {
+        return *(*this + offset);
+    }
+
+    [[nodiscard]] constexpr bool operator==(const string_const_iterator& right) const noexcept 
+    {
+        return _ptr == right._ptr;
+    }
+
+    [[nodiscard]] constexpr std::strong_ordering operator<=>(const string_const_iterator& right) const noexcept 
+    {
+        return _ptr <=> right._ptr;
+    }
+
+    pointer _ptr;
+};
+
+
+} // namespace detail {}
+
+namespace std
+{
+
+template <class StringT>
+struct pointer_traits<detail::string_const_iterator<StringT>>
+{
+    using pointer = detail::string_const_iterator<StringT>;
+    using element_type = const typename pointer::value_type;
+    using difference_type = typename pointer::difference_type;
+
+    [[nodiscard]] static constexpr element_type* to_address(const pointer iter) noexcept
+    {
+        return std::to_address(iter._ptr);
+    }
+};
+
+} // namespace std {}
 
 
 template <class CharT, class TraitsT = std::char_traits<CharT>, class AllocatorT = std::allocator<CharT>>
@@ -51,6 +185,11 @@ public:
 
     static constexpr size_type npos = size_type(-1);
 
+    using const_iterator = detail::string_const_iterator<basic_immutable_string>;
+    using iterator = const_iterator;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
+    using reverse_iterator = const_reverse_iterator;
+
     ~basic_immutable_string()
     {
         _release();
@@ -63,13 +202,12 @@ public:
         m_storage.ptrs.storage = nullptr;
     }
 
-    [[nodiscard]] static basic_immutable_string from_string_literal(const_pointer source) noexcept
-    {
-        assert(source);
-        size_type size = traits_type::length(source);
-        assert(size <= max_size());
+    struct FromStringLiteralT {};
+    static constexpr FromStringLiteralT FromStringLiteral = {};
 
-        return basic_immutable_string(nullptr, source, _check_size(size) | IsNullTerminated);
+    basic_immutable_string(const_pointer source, FromStringLiteralT)
+        : basic_immutable_string(nullptr, source, _check_size(traits_type::length(source)) | IsNullTerminated)
+    {
     }
 
     basic_immutable_string(const_pointer source, size_type size = size_type(-1), const allocator_type& a = allocator_type())
@@ -110,6 +248,11 @@ public:
         }
     }
 
+    basic_immutable_string(const_iterator begin, const_iterator end, const allocator_type& a = allocator_type())
+        : basic_immutable_string(begin._ptr, std::distance(begin, end), a)
+    {
+    }
+
     [[nodiscard]] static basic_immutable_string attach(_storage* sb) noexcept
     {
         // no add_ref() called
@@ -121,7 +264,7 @@ public:
     {
         // no release() called
         m_size = IsNullTerminated;
-        if (is_short())
+        if (_is_short())
             return nullptr;
 
         m_storage.ptrs.str = _empty_str();
@@ -130,16 +273,27 @@ public:
         return p;
     }
 
-    [[nodiscard]] constexpr bool is_shared() const noexcept
+#if TESTING
+public:
+#else
+private:
+#endif
+    [[nodiscard]] constexpr bool _is_shared() const noexcept
     {
-        return !is_short() && !!m_storage.ptrs.storage;
+        return !_is_short() && !!m_storage.ptrs.storage;
     }
 
-    [[nodiscard]] constexpr bool is_short() const noexcept
+    [[nodiscard]] constexpr bool _is_short() const noexcept
     {
         return (m_size & IsShortString) != 0;
     }
 
+    [[nodiscard]] constexpr bool _has_null_terminator() const noexcept
+    {
+        return (m_size & IsNullTerminated) != 0;
+    }
+
+public:
     basic_immutable_string(const basic_immutable_string& other) noexcept
         : m_size(other.m_size)
     {
@@ -229,11 +383,6 @@ public:
         return size() == 0;
     }
 
-    [[nodiscard]] constexpr bool has_null_terminator() const noexcept
-    {
-        return (m_size & IsNullTerminated) != 0;
-    }
-
     void clear() noexcept
     {
         m_storage.ptrs.storage = nullptr;
@@ -260,6 +409,46 @@ public:
         return basic_immutable_string(_get_storage_add_ref(), _get_string() + start, length);
     }
 
+    [[nodiscard]] constexpr const_iterator begin() const noexcept
+    {
+        return const_iterator{ _get_string() };
+    }
+
+    [[nodiscard]] constexpr const_iterator end() const noexcept
+    {
+        return const_iterator{ _get_string() + size() };
+    }
+
+    [[nodiscard]] constexpr const_iterator cbegin() const noexcept
+    {
+        return begin();
+    }
+
+    [[nodiscard]] constexpr const_iterator cend() const noexcept
+    {
+        return end();
+    }
+
+    [[nodiscard]] constexpr const_reverse_iterator rbegin() const noexcept
+    {
+        return const_reverse_iterator(end());
+    }
+
+    [[nodiscard]] constexpr const_reverse_iterator rend() const noexcept
+    {
+        return const_reverse_iterator(begin());
+    }
+
+    [[nodiscard]] constexpr const_reverse_iterator crbegin() const noexcept
+    {
+        return rbegin();
+    }
+
+    [[nodiscard]] constexpr const_reverse_iterator crend() const noexcept
+    {
+        return rend();
+    }
+
 private:
     static size_type const IsNullTerminated = size_type(1) << (std::numeric_limits<size_type>::digits - 1);
     static size_type const IsShortString = IsNullTerminated >> 1;
@@ -268,7 +457,7 @@ private:
     constexpr basic_immutable_string(_storage* stg, const_pointer data, size_type size) noexcept
         : m_size(size)
     {
-        assert(!is_short());
+        assert(!_is_short());
         m_storage.ptrs.str = data;
         m_storage.ptrs.storage = stg; // no add_ref()
     }
@@ -322,13 +511,13 @@ private:
 
     void _release() const noexcept
     {
-        if (!is_short() && m_storage.ptrs.storage)
+        if (!_is_short() && m_storage.ptrs.storage)
             m_storage.ptrs.storage->release();
     }
 
     constexpr _storage* _get_storage() const noexcept
     {
-        if (!is_short())
+        if (!_is_short())
             return m_storage.ptrs.storage;
 
         return nullptr;
@@ -336,7 +525,7 @@ private:
 
     constexpr _storage* _get_storage_add_ref() const noexcept
     {
-        if (!is_short() && m_storage.ptrs.storage)
+        if (!_is_short() && m_storage.ptrs.storage)
             return m_storage.ptrs.storage->add_ref().release();
 
         return nullptr;
@@ -344,7 +533,7 @@ private:
 
     constexpr const_pointer _get_string() const noexcept
     {
-        if (!is_short())
+        if (!_is_short())
             return m_storage.ptrs.str;
 
         return m_storage.short_string;

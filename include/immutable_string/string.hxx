@@ -122,24 +122,6 @@ struct string_const_iterator
 
 } // namespace detail {}
 
-namespace std
-{
-
-template <class StringT>
-struct pointer_traits<detail::string_const_iterator<StringT>>
-{
-    using pointer = detail::string_const_iterator<StringT>;
-    using element_type = const typename pointer::value_type;
-    using difference_type = typename pointer::difference_type;
-
-    [[nodiscard]] static constexpr element_type* to_address(const pointer iter) noexcept
-    {
-        return std::to_address(iter._ptr);
-    }
-};
-
-} // namespace std {}
-
 
 template <class CharT, class TraitsT = std::char_traits<CharT>, class AllocatorT = std::allocator<CharT>>
     requires (!std::is_array_v<CharT>) && std::is_trivial_v<CharT> && std::is_standard_layout_v<CharT>
@@ -222,7 +204,7 @@ public:
             if (source_len < ShortStringSize)
             {
                 // short string optimization
-                std::memcpy(m_storage.short_string, source, source_len);
+                std::memcpy(m_storage.short_string, source, source_len * sizeof(value_type));
                 m_storage.short_string[source_len] = value_type{}; // \0
                 m_size = source_len | IsShortString | IsNullTerminated;
             }
@@ -257,20 +239,29 @@ public:
     {
         // no add_ref() called
         assert(sb);
-        return basic_immutable_string(sb, sb->data(), sb->size());
+        return basic_immutable_string(sb, sb->data(), sb->size() | IsNullTerminated); // shared data is always null-terminated
     }
 
     [[nodiscard]] _storage* detach() noexcept
     {
         // no release() called
-        m_size = IsNullTerminated;
-        if (_is_short())
-            return nullptr;
+        _storage* result = nullptr;
+        if (!_is_shared())
+        {
+            // we have to make shared_data to have something to detach from
+            result = _make_cstr().release();
+        }
+        else
+        {
+            result = m_storage.ptrs.storage;
+        }
 
+        // now we're just an empty string
+        m_size = IsNullTerminated;
         m_storage.ptrs.str = _empty_str();
-        auto p = m_storage.ptrs.storage;
         m_storage.ptrs.storage = nullptr;
-        return p;
+        
+        return result;
     }
 
 #if TESTING
@@ -449,6 +440,12 @@ public:
         return rend();
     }
 
+    [[nodiscard]] constexpr const_reference operator[](size_type index) const noexcept
+    {
+        assert(index < size());
+        return _get_string() + index;
+    }
+
 private:
     static size_type const IsNullTerminated = size_type(1) << (std::numeric_limits<size_type>::digits - 1);
     static size_type const IsShortString = IsNullTerminated >> 1;
@@ -465,7 +462,7 @@ private:
     static size_type _check_size(size_type size)
     {
         if (size > max_size()) [[unlikely]]
-            throw std::length_error("Cannot create immutable string this long");
+            throw std::length_error("Cannot create string this long");
 
         return size;
     }
@@ -488,7 +485,7 @@ private:
     _storage_ptr _make_cstr() const
     {
         auto len = size();
-        auto storage = _storage::create((len + 1) * sizeof(value_type), data(), len, _get_allocator());
+        auto storage = _storage::create(len + 1, data(), len, _get_allocator());
         if (!storage) [[unlikely]]
             throw std::bad_alloc();
                 

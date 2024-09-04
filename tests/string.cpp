@@ -1288,3 +1288,33 @@ TEST(immutable_string, find)
         EXPECT_EQ(str.find('o'), 1);
     }
 }
+
+TEST(immutable_string, builder)
+{
+    {
+        immutable_string::builder b;
+
+        b.append(immutable_string());
+        b.append(immutable_string("", immutable_string::FromStringLiteral));
+        b.append(immutable_string("This", immutable_string::FromStringLiteral));
+        b.append(immutable_string(" is a")); // SSO
+        b.append(immutable_string(" long test string that does not fit into SSO but still valuable nevertheless"));
+        immutable_string str(" and more");
+        b.append(str); // l-value ref
+        b.append(str); // l-value ref
+
+        auto result = b.str();
+        ASSERT_FALSE(result.empty());
+        ASSERT_TRUE(result._has_null_terminator());
+        EXPECT_STREQ(result.data(), "This is a long test string that does not fit into SSO but still valuable nevertheless and more and more");
+    }
+
+    {
+        immutable_string a("This is a ");
+        immutable_string result = a + "long" + immutable_string(" test string that does not fit into SSO but still valuable nevertheless and more and more");
+
+        ASSERT_FALSE(result.empty());
+        ASSERT_TRUE(result._has_null_terminator());
+        EXPECT_STREQ(result.data(), "This is a long test string that does not fit into SSO but still valuable nevertheless and more and more");
+    }
+}

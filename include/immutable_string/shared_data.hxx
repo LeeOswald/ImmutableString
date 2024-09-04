@@ -100,6 +100,19 @@ public:
         return prev_refs - 1;
     }
 
+    void append(const value_type* source, size_type size)
+    {
+        if (size) [[likely]]
+        {
+            assert(source);
+            if (size > m_capacity - m_size)
+                throw std::length_error("Not enough room left in shared_data");
+
+            std::memcpy(data() + m_size, source, size * sizeof(value_type)); // no copy ctors called
+            m_size += size;
+        }
+    }
+
 private:
     template <class AllocatorT, class U>
     using _rebind_alloc = typename std::allocator_traits<AllocatorT>::template rebind_alloc<U>;
@@ -125,7 +138,8 @@ private:
 
         if (size)
         {
-            assert(!!source);
+            assert(source);
+            assert(size <= m_capacity);
             std::memcpy(data(), source, size * sizeof(value_type)); // no copy ctors called
         }
     }

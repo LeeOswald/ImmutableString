@@ -5,8 +5,10 @@
 #include <exception>
 #include <iterator>
 #include <limits>
-#include <memory.h>
+#include <memory>
 #include <string>
+#include <vector>
+
 
 namespace detail
 {
@@ -130,6 +132,7 @@ concept IsStringViewish =
         { s.data() } -> std::convertible_to<CharT const*>;
         { s.size() } -> std::convertible_to<std::size_t>;
     };
+
 
 
 template <class CharT, class TraitsT = std::char_traits<CharT>, class AllocatorT = std::allocator<CharT>>
@@ -516,6 +519,90 @@ public:
     [[nodiscard]] constexpr size_type rfind(value_type ch, size_type start_pos = npos) const noexcept
     {
         return _traits_rfind_ch(_get_string(), size(), start_pos, ch);
+    }
+
+    class builder final
+    {
+    public:
+        builder(size_type size_hint = 16, const allocator_type& a = allocator_type())
+            : m_strings(size_hint, a)
+            , m_allocator(a)
+        {
+        }
+
+        builder(const builder&) = delete;
+        builder& operator=(const builder&) = delete;
+        builder(builder&&) = default;
+        builder& operator=(builder&&) = default;
+
+        template <class StringT>
+        builder& append(StringT&& str)
+        {
+            m_strings.push_back(std::forward<StringT>(str));
+            return *this;
+        }
+
+        basic_immutable_string str() const
+        {
+            // calculate space required
+            size_type required = 0;
+            for (auto& s : m_strings)
+            {
+                required += s.size();
+            }
+
+            if (!required)
+                return basic_immutable_string();
+
+            auto sd = shared_data<value_type, allocator_type>::create(required + 1, nullptr, 0, m_allocator);
+            if (!sd) [[unlikely]]
+                throw std::bad_alloc();
+
+            for (auto& s : m_strings)
+            {
+                if (!s.empty())
+                    sd->append(s.data(), s.size());
+            }
+
+            // always null-terminate
+            auto d = sd->data();
+            d[sd->size()] = value_type{};
+
+            return basic_immutable_string::attach(sd.release());
+        }
+
+    private:
+        using _allocator = _rebind_alloc<allocator_type, basic_immutable_string>;
+
+        std::vector<basic_immutable_string, _allocator> m_strings;
+        _allocator m_allocator;
+    };
+
+    template <class StringT>
+    [[nodiscard]] friend builder operator+(const basic_immutable_string& a, StringT&& b)
+    {
+        builder bld;
+        bld.append(a).append(std::forward<StringT>(b));
+        return bld;
+    }
+
+    template <class StringT>
+    [[nodiscard]] friend builder&& operator+(builder&& bld, StringT&& a)
+    {
+        bld.append(std::forward<StringT>(a));
+        return std::move(bld);
+    }
+
+    basic_immutable_string(const builder& b)
+        : basic_immutable_string(b.str())
+    {
+    }
+
+    template <class OStreamT>
+    friend OStreamT& operator<<(OStreamT& stream, const basic_immutable_string& str)
+    {
+        stream << std::basic_string_view<value_type, traits_type>(str.data(), str.size());
+        return stream;
     }
 
 private:

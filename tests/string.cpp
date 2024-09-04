@@ -336,6 +336,74 @@ TEST(immutable_string, create)
         EXPECT_TRUE(dst._is_shared());
         EXPECT_FALSE(dst._is_short());
     }
+
+    // from std::string_view
+    {
+        immutable_string src(std::string_view(LONG_STRING, LONG_STRING_PART_LEN));
+        EXPECT_TRUE(src._has_null_terminator());
+        EXPECT_FALSE(src._is_short());
+        EXPECT_FALSE(src.empty());
+        EXPECT_EQ(src.length(), LONG_STRING_PART_LEN);
+        EXPECT_EQ(src.size(), src.length());
+
+        EXPECT_NE(src.c_str(), LONG_STRING);
+        EXPECT_STREQ(src.c_str(), LONG_STRING_PART);
+        EXPECT_EQ(src.data(), src.c_str());
+        EXPECT_TRUE(src._is_shared());
+        EXPECT_FALSE(src._is_short());
+
+        auto dst = immutable_string::attach(src.detach());
+
+        EXPECT_TRUE(src.empty());
+        EXPECT_EQ(src.length(), 0);
+        EXPECT_EQ(src.size(), 0);
+        EXPECT_TRUE(!!src.c_str());
+        EXPECT_STREQ(src.c_str(), "");
+        EXPECT_EQ(src.data(), src.c_str());
+        EXPECT_TRUE(!src._is_shared());
+
+        EXPECT_FALSE(dst.empty());
+        EXPECT_EQ(dst.length(), LONG_STRING_PART_LEN);
+        EXPECT_EQ(dst.size(), dst.length());
+        EXPECT_STREQ(dst.c_str(), LONG_STRING_PART);
+        EXPECT_EQ(dst.data(), dst.c_str());
+        EXPECT_TRUE(dst._is_shared());
+        EXPECT_FALSE(dst._is_short());
+    }
+
+    // from std::string
+    {
+        immutable_string src(std::string(LONG_STRING, LONG_STRING_PART_LEN));
+        EXPECT_TRUE(src._has_null_terminator());
+        EXPECT_FALSE(src._is_short());
+        EXPECT_FALSE(src.empty());
+        EXPECT_EQ(src.length(), LONG_STRING_PART_LEN);
+        EXPECT_EQ(src.size(), src.length());
+
+        EXPECT_NE(src.c_str(), LONG_STRING);
+        EXPECT_STREQ(src.c_str(), LONG_STRING_PART);
+        EXPECT_EQ(src.data(), src.c_str());
+        EXPECT_TRUE(src._is_shared());
+        EXPECT_FALSE(src._is_short());
+
+        auto dst = immutable_string::attach(src.detach());
+
+        EXPECT_TRUE(src.empty());
+        EXPECT_EQ(src.length(), 0);
+        EXPECT_EQ(src.size(), 0);
+        EXPECT_TRUE(!!src.c_str());
+        EXPECT_STREQ(src.c_str(), "");
+        EXPECT_EQ(src.data(), src.c_str());
+        EXPECT_TRUE(!src._is_shared());
+
+        EXPECT_FALSE(dst.empty());
+        EXPECT_EQ(dst.length(), LONG_STRING_PART_LEN);
+        EXPECT_EQ(dst.size(), dst.length());
+        EXPECT_STREQ(dst.c_str(), LONG_STRING_PART);
+        EXPECT_EQ(dst.data(), dst.c_str());
+        EXPECT_TRUE(dst._is_shared());
+        EXPECT_FALSE(dst._is_short());
+    }
 }
 
 TEST(immutable_string, copy)
@@ -1131,5 +1199,92 @@ TEST(immutable_string, reverse_iterators)
         immutable_string src(LONG_STRING);
         auto chrs = collect_chars(src);
         EXPECT_EQ(chrs, std::string(LONG_STRING));
+    }
+}
+
+TEST(immutable_string, rfind)
+{
+    // in empty string
+    {
+        immutable_string str;
+        EXPECT_EQ(str.rfind(""), 0);
+        EXPECT_EQ(str.rfind("", 1), 0);
+        EXPECT_EQ(str.rfind("wow"), immutable_string::npos);
+        EXPECT_EQ(str.rfind('w'), immutable_string::npos);
+    }
+
+    // in short string
+    {
+        immutable_string str("shosho");
+        ASSERT_TRUE(str._is_short());
+        EXPECT_EQ(str.rfind(""), 6);
+        EXPECT_EQ(str.rfind("sho"), 3);
+        EXPECT_EQ(str.rfind("sho", 2), 0);
+        EXPECT_EQ(str.rfind("long"), immutable_string::npos);
+        EXPECT_EQ(str.rfind('w'), immutable_string::npos);
+        EXPECT_EQ(str.rfind('s'), 3);
+        EXPECT_EQ(str.rfind('s', 2), 0);
+    }
+
+    // in long string
+    {
+        immutable_string str("Someone asked me yesterday Someone asked me yesterday");
+        ASSERT_FALSE(str._is_short());
+        EXPECT_EQ(str.rfind("Som"), 27);
+        EXPECT_EQ(str.rfind("Som", 26), 0);
+        EXPECT_EQ(str.rfind("som"), immutable_string::npos);
+        EXPECT_EQ(str.rfind('w'), immutable_string::npos);
+        EXPECT_EQ(str.rfind('S'), 27);
+        EXPECT_EQ(str.rfind('S', 26), 0);
+    }
+}
+
+TEST(immutable_string, find)
+{
+    // in empty string
+    {
+        immutable_string str;
+        EXPECT_EQ(str.find(""), 0);
+        EXPECT_EQ(str.find("", 1), immutable_string::npos);
+        EXPECT_EQ(str.find("wow"), immutable_string::npos);
+        EXPECT_EQ(str.find("wow", 1), immutable_string::npos);
+        EXPECT_EQ(str.find('w'), immutable_string::npos);
+        EXPECT_EQ(str.find('w', 1), immutable_string::npos);
+    }
+
+    // in short string
+    {
+        immutable_string str("short");
+        ASSERT_TRUE(str._is_short());
+        EXPECT_EQ(str.find(""), 0);
+        EXPECT_EQ(str.find("", 1), 1);
+        EXPECT_EQ(str.find("", str.length() + 1), immutable_string::npos);
+        EXPECT_EQ(str.find("sho"), 0);
+        EXPECT_EQ(str.find("sho", 1), immutable_string::npos);
+        EXPECT_EQ(str.find("rt"), 3);
+        EXPECT_EQ(str.find("rt", 4), immutable_string::npos);
+        EXPECT_EQ(str.find("short"), 0);
+        EXPECT_EQ(str.find("long"), immutable_string::npos);
+        EXPECT_EQ(str.find('w'), immutable_string::npos);
+        EXPECT_EQ(str.find('s'), 0);
+        EXPECT_EQ(str.find('t'), 4);
+        EXPECT_EQ(str.find('t', 5), immutable_string::npos);
+    }
+
+    // in long string
+    {
+        immutable_string str("Someone asked me yesterday: \"have you got a pet?\" I sadly had to answer them: \"no I haven\'t yet\"");
+        ASSERT_FALSE(str._is_short());
+        EXPECT_EQ(str.find(""), 0);
+        EXPECT_EQ(str.find("", 1), 1);
+        EXPECT_EQ(str.find("", str.length() + 1), immutable_string::npos);
+        EXPECT_EQ(str.find("Som"), 0);
+        EXPECT_EQ(str.find("Som", 1), immutable_string::npos);
+        EXPECT_EQ(str.find("eone"), 3);
+        EXPECT_EQ(str.find("eone", 4), immutable_string::npos);
+        EXPECT_EQ(str.find("long"), immutable_string::npos);
+        EXPECT_EQ(str.find('!'), immutable_string::npos);
+        EXPECT_EQ(str.find('S'), 0);
+        EXPECT_EQ(str.find('o'), 1);
     }
 }

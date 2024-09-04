@@ -123,6 +123,15 @@ struct string_const_iterator
 } // namespace detail {}
 
 
+template <class StringViewT, class CharT>
+concept IsStringViewish = 
+    requires(const StringViewT s)
+    {
+        { s.data() } -> std::convertible_to<CharT const*>;
+        { s.size() } -> std::convertible_to<std::size_t>;
+    };
+
+
 template <class CharT, class TraitsT = std::char_traits<CharT>, class AllocatorT = std::allocator<CharT>>
     requires (!std::is_array_v<CharT>) && std::is_trivial_v<CharT> && std::is_standard_layout_v<CharT>
 class basic_immutable_string final
@@ -204,7 +213,7 @@ public:
             if (source_len < ShortStringSize)
             {
                 // short string optimization
-                std::memcpy(m_storage.short_string, source, source_len * sizeof(value_type));
+                traits_type::copy(m_storage.short_string, source, source_len);
                 m_storage.short_string[source_len] = value_type{}; // \0
                 m_size = source_len | IsShortString | IsNullTerminated;
             }
@@ -228,6 +237,12 @@ public:
             m_storage.ptrs.str = _empty_str();
             m_size = IsNullTerminated;
         }
+    }
+
+    template <IsStringViewish<value_type> StringViewT>
+    basic_immutable_string(const StringViewT& str, const allocator_type& a = allocator_type())
+        : basic_immutable_string(str.data(), str.size(), a)
+    {
     }
 
     basic_immutable_string(const_iterator begin, const_iterator end, const allocator_type& a = allocator_type())
@@ -446,6 +461,63 @@ public:
         return _get_string() + index;
     }
 
+    constexpr size_type copy(pointer dest, size_type count, size_type pos = 0) const
+    {
+        assert(dest);
+        auto const sz = size();
+        if (pos > sz) [[unlikely]]
+            throw std::out_of_range("Trying to copy from beyond the end of the string");
+
+        if (count + pos > sz) [[unlikely]]
+            count = sz - pos;
+
+        if (!count) [[unlikely]]
+            return count;
+
+        auto const src = _get_string() + pos;
+        traits_type::copy(dest, src, count);
+
+        return count;
+    }
+
+    template <IsStringViewish<value_type> StringViewT>
+    [[nodiscard]] constexpr size_type find(const StringViewT& what, size_type start_pos = 0) const noexcept
+    {
+        assert(what.data());
+        return _traits_find(_get_string(), size(), start_pos, what.data(), what().size());
+    }
+
+    [[nodiscard]] constexpr size_type find(const value_type* what, size_type start_pos = 0) const noexcept
+    {
+        assert(what);
+        auto length = traits_type::length(what);
+        return _traits_find(_get_string(), size(), start_pos, what, length);
+    }
+
+    [[nodiscard]] constexpr size_type find(value_type ch, size_type start_pos = 0) const noexcept
+    {
+        return _traits_find_ch(_get_string(), size(), start_pos, ch);
+    }
+
+    template <IsStringViewish<value_type> StringViewT>
+    [[nodiscard]] constexpr size_type rfind(const StringViewT& what, size_type start_pos = npos) const noexcept
+    {
+        assert(what.data());
+        return _traits_rfind(_get_string(), size(), start_pos, what.data(), what().size());
+    }
+
+    [[nodiscard]] constexpr size_type rfind(const value_type* what, size_type start_pos = npos) const noexcept
+    {
+        assert(what);
+        auto length = traits_type::length(what);
+        return _traits_rfind(_get_string(), size(), start_pos, what, length);
+    }
+
+    [[nodiscard]] constexpr size_type rfind(value_type ch, size_type start_pos = npos) const noexcept
+    {
+        return _traits_rfind_ch(_get_string(), size(), start_pos, ch);
+    }
+
 private:
     static size_type const IsNullTerminated = size_type(1) << (std::numeric_limits<size_type>::digits - 1);
     static size_type const IsShortString = IsNullTerminated >> 1;
@@ -530,10 +602,105 @@ private:
 
     constexpr const_pointer _get_string() const noexcept
     {
-        if (!_is_short())
-            return m_storage.ptrs.str;
+        return _is_short() ? m_storage.short_string : m_storage.ptrs.str;
+    }
 
-        return m_storage.short_string;
+    static constexpr size_type _traits_find(const_pointer haystack, size_type hay_size, size_type start_pos, const_pointer needle, size_type needle_size) noexcept
+    {
+        // search [haystack, haystack + hay_size) for [needle, needle + needle_size), at/after start_pos
+        if (needle_size > hay_size || start_pos > hay_size - needle_size) 
+        {
+            return npos;
+        }
+
+        if (needle_size == 0) 
+        { 
+            // empty string always matches
+            return start_pos;
+        }
+
+        const auto possible_matches_end = haystack + (hay_size - needle_size) + 1;
+        for (auto match_try = haystack + start_pos;; ++match_try) 
+        {
+            match_try = traits_type::find(match_try, static_cast<size_type>(possible_matches_end - match_try), *needle);
+            if (!match_try) 
+            { 
+                // didn't find first character
+                return npos;
+            }
+
+            if (traits_type::compare(match_try, needle, needle_size) == 0) 
+            { 
+                // match
+                return static_cast<size_type>(match_try - haystack);
+            }
+        }
+    }
+
+    static constexpr size_type _traits_find_ch(const_pointer haystack, size_type hay_size, size_type start_pos, value_type ch) noexcept
+    {
+        // search [haystack, haystack + hay_size) for ch, at/after start_pos
+        if (start_pos < hay_size) 
+        {
+            const auto found_at = traits_type::find(haystack + start_pos, hay_size - start_pos, ch);
+            if (found_at) 
+            {
+                return static_cast<size_type>(found_at - haystack);
+            }
+        }
+
+        return npos; // no match
+    }
+
+    static constexpr size_type _traits_rfind(const_pointer haystack, size_type hay_size, size_type start_pos, const_pointer needle, size_type needle_size) noexcept
+    {
+        // search [haystack, haystack + hay_size) for [needle, needle + needle_size) beginning before start_pos
+        if (needle_size == 0) 
+        {
+            return std::min(start_pos, hay_size); // empty string always matches
+        }
+
+        if (needle_size <= hay_size) 
+        { 
+            // room for match, look for it
+            for (auto match_try = haystack + std::min(start_pos, hay_size - needle_size);; --match_try) 
+            {
+                if (traits_type::eq(*match_try, *needle) && traits_type::compare(match_try, needle, needle_size) == 0) 
+                {
+                    return static_cast<size_type>(match_try - haystack); // found a match
+                }
+
+                if (match_try == haystack) 
+                {
+                    break; // at beginning, no more chance for match
+                }
+            }
+        }
+
+        return npos; // no match
+    }
+
+    static constexpr size_type _traits_rfind_ch(const_pointer haystack, size_type hay_size, size_type start_pos, value_type ch) noexcept 
+    {
+        // search [haystack, haystack + hay_size) for ch before start_pos
+        if (hay_size != 0) 
+        { 
+            // room for match, look for it
+            for (auto match_try = haystack + std::min(start_pos, hay_size - 1);; --match_try) 
+            {
+                if (traits_type::eq(*match_try, ch)) 
+                {
+                    return static_cast<size_type>(match_try - haystack); // found a match
+                }
+
+                if (match_try == haystack) 
+                {
+                    break; // at beginning, no more chance for match
+                }
+            }
+        }
+
+        return npos; // no match
     }
 
     // omg, yes, they're all mutable

@@ -25,6 +25,8 @@ static void signalHandler(int signal)
     std::_Exit(EXIT_FAILURE);
 }
 
+void run_benchmark(size_t size);
+
 int main(int argc, char** argv)
 {
 #if !defined(NDEBUG) && defined(_MSC_VER)
@@ -39,6 +41,31 @@ int main(int argc, char** argv)
 
     std::set_terminate(terminateHandler);
     std::signal(SIGABRT, signalHandler);
+
+    bool bench = false;
+    unsigned long long bench_size = 512 * 1024 * 1024; 
+
+    for (int i = 0; i < argc; ++i)
+    {
+        if (!std::strcmp(argv[i], "--benchmark"))
+        {
+            bench = true;
+        }
+        else if (!std::strcmp(argv[i], "--size"))
+        {
+            if (i + 1 < argc)
+            {
+                bench_size = std::strtoull(argv[i], nullptr, 10);
+                ++i;
+            }
+        }
+    }
+
+    if (bench)
+    {
+        run_benchmark(bench_size);
+        return 0;
+    }
 
     ::testing::InitGoogleTest(&argc, argv);
 

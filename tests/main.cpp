@@ -25,7 +25,8 @@ static void signalHandler(int signal)
     std::_Exit(EXIT_FAILURE);
 }
 
-void run_benchmark(size_t size);
+int generate_benchmark(const std::string& file, unsigned long long words);
+int run_benchmark(const std::string& file, unsigned long long words, unsigned runs);
 
 int main(int argc, char** argv)
 {
@@ -43,7 +44,10 @@ int main(int argc, char** argv)
     std::signal(SIGABRT, signalHandler);
 
     bool bench = false;
-    unsigned long long bench_size = 512 * 1024 * 1024; 
+    unsigned long long bench_size_words = 1 * 1000 * 1000; 
+    std::string data_file;
+    bool generate = false;
+    unsigned runs = 5;
 
     for (int i = 0; i < argc; ++i)
     {
@@ -55,21 +59,48 @@ int main(int argc, char** argv)
         {
             if (i + 1 < argc)
             {
-                bench_size = std::strtoull(argv[i], nullptr, 10);
+                bench_size_words = std::strtoull(argv[i + 1], nullptr, 10);
+                ++i;
+            }
+        }
+        else if (!std::strcmp(argv[i], "--runs"))
+        {
+            if (i + 1 < argc)
+            {
+                runs = (unsigned)std::strtoull(argv[i + 1], nullptr, 10);
+                ++i;
+            }
+        }
+        else if (!std::strcmp(argv[i], "--generate"))
+        {
+            generate = true;
+            if (i + 1 < argc)
+            {
+                data_file = argv[i + 1];
+                ++i;
+            }
+        }
+        else if (!std::strcmp(argv[i], "--load"))
+        {
+            if (i + 1 < argc)
+            {
+                data_file = argv[i + 1];
                 ++i;
             }
         }
     }
 
+    if (generate)
+    {
+        return generate_benchmark(data_file, bench_size_words);
+    }
+
     if (bench)
     {
-        run_benchmark(bench_size);
-        return 0;
+        return run_benchmark(data_file, bench_size_words, runs);
     }
 
     ::testing::InitGoogleTest(&argc, argv);
-
     auto r = RUN_ALL_TESTS();
-
     return r;
 }

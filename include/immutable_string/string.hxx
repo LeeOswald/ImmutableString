@@ -204,6 +204,11 @@ public:
     {
     }
 
+    basic_immutable_string(const_pointer source, size_type size, FromStringLiteralT)
+        : basic_immutable_string(nullptr, source, _check_size(size) | IsNullTerminated)
+    {
+    }
+
     basic_immutable_string(const_pointer source, size_type size = size_type(-1), const allocator_type& a = allocator_type())
     {
         if (source && *source) [[likely]]
@@ -458,6 +463,19 @@ public:
         return rend();
     }
 
+    [[nodiscard]] constexpr bool operator==(const basic_immutable_string& o) noexcept
+    {
+        auto asz = size();
+        auto bsz = o.size();
+        if (asz != bsz)
+            return false;
+
+        if (asz == 0)
+            return true;
+
+        return std::memcmp(data(), o.data(), sizeof(value_type) * asz) == 0;
+    }
+
     [[nodiscard]] constexpr const_reference operator[](size_type index) const noexcept
     {
         assert(index < size());
@@ -539,6 +557,12 @@ public:
         builder& append(StringT&& str)
         {
             m_strings.push_back(std::forward<StringT>(str));
+            return *this;
+        }
+
+        builder& append(const basic_immutable_string& str)
+        {
+            m_strings.push_back(str);
             return *this;
         }
 

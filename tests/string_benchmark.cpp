@@ -5,10 +5,14 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <random>
 #include <sstream>
 #include <vector>
+
+const char SEPARATOR = '\n';
+const char* const SSEPARATOR = "\n";
 
 class allocator_base
 {
@@ -20,9 +24,10 @@ public:
             throw std::bad_alloc();
 
         ++_allocations;
-        _current_bytes += size;
-        if (_current_bytes > _peak_bytes)
-            _peak_bytes = _current_bytes;
+        _allocated_bytes += size;
+
+        if (_verbose)
+            std::cout << "a " << size << "\n";
 
         return p;
     }
@@ -30,23 +35,22 @@ public:
     void deallocate(void* p, size_t size)
     {
         std::free(p);
-        _current_bytes -= size;
-        ++_frees;
+
+        if (_verbose)
+            std::cout << "r " << size << "\n";
     }
 
-    static int64_t _peak_bytes;
-    static int64_t _current_bytes;
-    static int64_t _allocations;
-    static int64_t _frees;
+    static uint64_t _allocations;
+    static uint64_t _allocated_bytes;
+    static bool _verbose;
 };
 
-int64_t allocator_base::_peak_bytes = 0;
-int64_t allocator_base::_current_bytes = 0;
-int64_t allocator_base::_allocations = 0;
-int64_t allocator_base::_frees = 0;
+uint64_t allocator_base::_allocations = 0;
+uint64_t allocator_base::_allocated_bytes = 0;
+bool allocator_base::_verbose = false;
 
 template <class _Ty>
-class Allocator
+class BenchAllocator
     : public allocator_base
 {
 public:
@@ -54,15 +58,15 @@ public:
     using size_type = size_t;
     using difference_type = ptrdiff_t;
 
-    constexpr Allocator() noexcept {}
+    constexpr BenchAllocator() noexcept {}
 
-    constexpr Allocator(const Allocator&) noexcept = default;
+    constexpr BenchAllocator(const BenchAllocator&) noexcept = default;
     
     template <class _Other>
-    constexpr Allocator(const Allocator<_Other>&) noexcept {}
+    constexpr BenchAllocator(const BenchAllocator<_Other>&) noexcept {}
     
-    constexpr ~Allocator() = default;
-    constexpr Allocator& operator=(const Allocator&) = default;
+    constexpr ~BenchAllocator() = default;
+    constexpr BenchAllocator& operator=(const BenchAllocator&) = default;
 
     constexpr void deallocate(_Ty* const _Ptr, const size_t _Count) 
     {
@@ -76,15 +80,15 @@ public:
 
 };
 
-using StdString = std::basic_string<char, std::char_traits<char>, Allocator<char>>;
-using RString = basic_immutable_string<char, std::char_traits<char>, Allocator<char>>;
+using StdString = std::basic_string<char, std::char_traits<char>, BenchAllocator<char>>;
+using RString = basic_immutable_string<char, std::char_traits<char>, BenchAllocator<char>>;
+using OStringStream = std::basic_ostringstream<char, std::char_traits<char>, BenchAllocator<char>>;
 
-
-static size_t generateWord(std::ostringstream& ss)
+static void generateWord(OStringStream& ss)
 {
     static const char ValidChars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     static const size_t ValidCharsCount = sizeof(ValidChars) - 1;
-    static const int MaxWordLength = 25;
+    static const int MaxWordLength = 15;
 
     static std::random_device rd;
     static std::mt19937 gen(rd());
@@ -92,33 +96,27 @@ static size_t generateWord(std::ostringstream& ss)
     static std::uniform_int_distribution<> wordLenDistrib(1, MaxWordLength);
     static std::uniform_int_distribution<> charDistrib(0, ValidCharsCount - 1);
 
-    size_t size = 0;
     auto wordLen = wordLenDistrib(gen);
     while (wordLen--)
     {
         auto ch = ValidChars[charDistrib(gen)];
         ss << ch;
-        ++size;
     }
-
-    ss << ' ';
-    ++size;
-
-    return size;
 }
 
-static std::pair<StdString, size_t> generateLargeString(size_t size)
+static StdString generate_data_set(unsigned long long words)
 {
-    std::ostringstream ss;
-    size_t done = 0;
-    size_t words = 0;
-    while (done < size)
+    OStringStream ss;
+    
+    while (words)
     {
-        done += generateWord(ss);
-        ++words;
+        generateWord(ss);
+        --words;
+        if (words > 0)
+            ss << SEPARATOR;
     }
 
-    return std::pair<StdString, size_t>(ss.str(), words);
+    return ss.str();
 }
 
 template <class StringT, class ContainerT>
@@ -128,7 +126,7 @@ void split2(const StringT& source, ContainerT& receiver)
 
     while (start < source.size())
     {
-        const auto delim = source.find(' ', start);
+        const auto delim = source.find(SEPARATOR, start);
         const auto end = (delim == StringT::npos) ? source.size() : delim;
 
         if (start != end)
@@ -143,181 +141,247 @@ void split2(const StringT& source, ContainerT& receiver)
     }
 }
 
-static void std_string_bench(const StdString& source, size_t words)
+static std::string format_memsize(uint64_t bytes)
 {
-    std::cout << "-------------- std::string -----------------------\n";
-    std::cout << "Words: " << words << "\n";
+    std::ostringstream stream;
+    if (bytes < 1024 * 10)
+    {
+        stream << bytes << " bytes";
+    }
+    else
+    {
+        stream << std::fixed << std::setprecision(3);
+        double v = bytes / 1024.0;
+        if (v < 1024 * 10)
+        {
+            stream << v << " Kb";
+        }
+        else
+        {
+            v /= 1024.0;
+            if (v < 1024 * 10)
+            {
+                stream << v << " Mb";
+            }
+            else
+            {
+                v /= 1024.0;
+                stream << v << " Gb";
+            }
+        }
+    }
 
-    std::vector<StdString> v;
-    v.reserve(words);
-    unsigned const runs = 3;
+    return stream.str();
+}
 
-    int64_t timeSplit = 0;
-    int64_t memSplit = 0;
-    int64_t allocsSplit = 0;
+template <typename StringT, typename SplitT, typename MergeT>
+void run_benchmark_split_merge(const StringT& source, uint64_t wc, SplitT splitter, MergeT merger, unsigned runs)
+{
+    uint64_t timeSplit = 0;
+    uint64_t memSplit = 0;
+    uint64_t allocsSplit = 0;
 
-    int64_t timeMerge = 0;
-    int64_t memMerge = 0;
-    int64_t allocsMerge = 0;
+    uint64_t timeMerge = 0;
+    uint64_t memMerge = 0;
+    uint64_t allocsMerge = 0;
 
+    std::vector<StringT, BenchAllocator<StringT>> words;
+    words.reserve(wc);
 
     for (unsigned r = 0; r < runs; r++)
     {
+        words.clear();
+
+        allocator_base::_verbose = true;
+
         // split
-        auto mem0 = allocator_base::_current_bytes;
-        auto allocs0 = allocator_base::_allocations;
+        {
+            auto mem0 = allocator_base::_allocated_bytes;
+            auto allocs0 = allocator_base::_allocations;
 
-        auto start = std::chrono::high_resolution_clock::now();
-        split2(source, v);
-        auto end = std::chrono::high_resolution_clock::now();
+            auto start = std::chrono::high_resolution_clock::now();
+            splitter(words, source, false);
+            auto end = std::chrono::high_resolution_clock::now();
 
-        auto mem1 = allocator_base::_current_bytes;
-        memSplit += mem1 - mem0;
-        auto allocs1 = allocator_base::_allocations;
-        allocsSplit += allocs1 - allocs0;
+            auto mem1 = allocator_base::_allocated_bytes;
+            memSplit += mem1 - mem0;
+            auto allocs1 = allocator_base::_allocations;
+            allocsSplit += allocs1 - allocs0;
 
-        auto dura = end - start;
-        auto msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
-        timeSplit += msecs;
+            auto dura = end - start;
+            auto msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
+            timeSplit += msecs;
+        }
 
         // merge
-        mem0 = allocator_base::_current_bytes;
-        allocs0 = allocator_base::_allocations;
-
-        start = std::chrono::high_resolution_clock::now();
-        
-        StdString result;
-        for (auto& s : v)
         {
-            result.append(std::move(s));
-            result.append(" ");
+            auto mem0 = allocator_base::_allocated_bytes;
+            auto allocs0 = allocator_base::_allocations;
+
+            auto start = std::chrono::high_resolution_clock::now();
+
+            merger(words, source);
+
+            auto end = std::chrono::high_resolution_clock::now();
+
+            auto mem1 = allocator_base::_allocated_bytes;
+            memMerge += mem1 - mem0;
+            auto allocs1 = allocator_base::_allocations;
+            allocsMerge += allocs1 - allocs0;
+
+            auto dura = end - start;
+            auto msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
+            timeMerge += msecs;
         }
-                
-        if (result != source)
-            std::cerr << "Split/merge of std::string went wrong\n";
 
-
-        end = std::chrono::high_resolution_clock::now();
-
-        mem1 = allocator_base::_current_bytes;
-        memMerge += mem1 - mem0;
-        allocs1 = allocator_base::_allocations;
-        allocsMerge += allocs1 - allocs0;
-
-        dura = end - start;
-        msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
-        timeMerge += msecs;
-
-        v.clear();
+        allocator_base::_verbose = false;
     }
 
     timeSplit /= runs;
+    timeMerge /= runs;
     memSplit /= runs;
+    memMerge /= runs;
     allocsSplit /= runs;
+    allocsMerge /= runs;
 
-    std::cout << "Time: s=" << timeSplit << " m=" << timeMerge << " t=" << timeSplit + timeMerge << " ms\n";
-    std::cout << "Memory: s=" << memSplit << " m=" << memMerge << " t=" << memSplit + memMerge << " bytes\n";
-    std::cout << "Allocations: s=" << allocsSplit << " m=" << allocsMerge << " t=" << allocsSplit + allocsMerge << "\n";
+    std::cout << "Time (ms):  " << std::setw(10) << timeSplit + timeMerge     << "     Split: " << std::setw(10) << timeSplit   << " Merge: " << std::setw(10) << timeMerge << "\n";
+    std::cout << "Allocations:" << std::setw(10) << allocsSplit + allocsMerge << "     Split: " << std::setw(10) << allocsSplit << " Merge: " << std::setw(10) << allocsMerge << "\n";
+    std::cout << "Memory:     " << format_memsize(memSplit + memMerge) << "     Split: " << format_memsize(memSplit) << " Merge: " << format_memsize(memMerge) << "\n";
+    std::cout << "--------------------------------------------------------------\n";
+
 }
 
-static void immutable_string_bench(const RString& source, size_t words)
+static void std_string_splitter(std::vector<StdString, BenchAllocator<StdString>>& v, const StdString& source, bool silent)
 {
-    std::cout << "-------------- immutable_string -----------------------\n";
-    std::cout << "Words: " << words << "\n";
-
-    std::vector<RString> v;
-    v.reserve(words);
-
-    unsigned const runs = 3;
-
-    int64_t timeSplit = 0;
-    int64_t memSplit = 0;
-    int64_t allocsSplit = 0;
-
-    int64_t timeMerge = 0;
-    int64_t memMerge = 0;
-    int64_t allocsMerge = 0;
-
-    for (unsigned r = 0; r < runs; r++)
-    {
-        // split
-        auto mem0 = allocator_base::_current_bytes;
-        auto allocs0 = allocator_base::_allocations;
-
-        auto start = std::chrono::high_resolution_clock::now();
-        split2(source, v);
-        auto end = std::chrono::high_resolution_clock::now();
-
-        auto mem1 = allocator_base::_current_bytes;
-        memSplit += mem1 - mem0;
-        auto allocs1 = allocator_base::_allocations;
-        allocsSplit += allocs1 - allocs0;
-
-        auto dura = end - start;
-        auto msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
-        timeSplit += msecs;
-
-        // merge
-        mem0 = allocator_base::_current_bytes;
-        allocs0 = allocator_base::_allocations;
-
-        start = std::chrono::high_resolution_clock::now();
-
-        RString::builder bld;
-        for (auto& s : v)
-        {
-            bld.append(std::move(s));
-            bld.append(" ");
-        }
-
-        auto result = bld.str();
-        if (std::memcmp(result.data(), source.data(), std::min(result.size(), source.size())) != 0)
-            std::cerr << "Split/merge of RString went wrong\n";
-
-
-        end = std::chrono::high_resolution_clock::now();
-
-        mem1 = allocator_base::_current_bytes;
-        memMerge += mem1 - mem0;
-        allocs1 = allocator_base::_allocations;
-        allocsMerge += allocs1 - allocs0;
-
-        dura = end - start;
-        msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
-        timeMerge += msecs;
-
-        v.clear();
-    }
-
-    timeSplit /= runs;
-    memSplit /= runs;
-    allocsSplit /= runs;
-
-    std::cout << "Time: s=" << timeSplit << " m=" << timeMerge << " t=" << timeSplit + timeMerge << " ms\n";
-    std::cout << "Memory: s=" << memSplit << " m=" << memMerge << " t=" << memSplit + memMerge << " bytes\n";
-    std::cout << "Allocations: s=" << allocsSplit << " m=" << allocsMerge << " t=" << allocsSplit + allocsMerge << "\n";
+    if (!silent)
+        std::cout << "Splitting std::string...\n";
+    
+    split2(source, v);
 }
 
-void run_benchmark(size_t size)
+static void std_string_merger(std::vector<StdString, BenchAllocator<StdString>>& v, const StdString& source)
+{
+    std::cout << "Merging std::string...\n";
+    StdString m;
+    std::size_t i = 0;
+    std::size_t count =  v.size();
+    for (auto& s : v)
+    {
+        m.append(std::move(s));
+        if (++i < count)
+        {
+            m.append(1, SEPARATOR);
+        }
+    }
+
+    if (m != source)
+        std::cout << "ERROR while splitting/merging std::string\n";
+}
+
+static void immutable_string_splitter(std::vector<RString, BenchAllocator<RString>>& v, const RString& source, bool silent)
+{
+    if (!silent)
+        std::cout << "Splitting immutable_string...\n";
+    
+    split2(source, v);
+}
+
+static void immutable_string_merger(std::vector<RString, BenchAllocator<RString>>& v, const RString& source)
+{
+    std::cout << "Merging immutable_string...\n";
+    RString::builder b;
+    std::size_t i = 0;
+    std::size_t count = v.size();
+    for (auto& s : v)
+    {
+        b.append(s);
+        if (++i < count)
+        {
+            b.append(RString(SSEPARATOR, 1, RString::FromStringLiteral));
+        }
+    }
+
+    auto result = b.str();
+    if (result != source)
+        std::cout << "ERROR while splitting/merging immutable_string\n";
+}
+
+int generate_benchmark(const std::string& file, unsigned long long words)
 {
     try
     {
         std::cout << "Generating test data...\n";
-        auto source = generateLargeString(size);
+        auto source = generate_data_set(words);
+        std::cout << "Generated " << source.size() << " bytes dataset\n";
 
-#if 0
-        std::ofstream of("data.txt");
-        of << source.first;
-        of.close();
-#endif
-        RString source_immutable(source.first);
+        std::ofstream f(file, std::ios_base::binary | std::ios_base::trunc);
+        if (!f.is_open())
+            throw std::runtime_error(std::string("Failed to create ") + file);
+
+        f.write(source.data(), source.size());
+    }
+    catch (std::exception& e)
+    {
+        std::cerr << "Unexpected error: " << e.what() << "\n";
+        return -1;
+    }
+
+    return 0;
+}
+
+template <typename StringT>
+uint64_t count_words(const StringT& s)
+{
+    uint64_t count = 0;
+    for (auto c : s)
+    {
+        if (c == SEPARATOR)
+            ++count;
+    }
+
+    return count;
+}
+
+int run_benchmark(const std::string& file, unsigned long long words, unsigned runs)
+{
+    try
+    {
+        StdString data_set;
+
+        if (!file.empty())
+        {
+            std::cout << "Loading test data...\n";
+            std::ifstream f(file, std::ios_base::binary);
+            if (!f.is_open())
+                throw std::runtime_error(std::string("Failed to open ") + file);
+
+            OStringStream ss;
+            ss << f.rdbuf();
+            data_set = ss.str();
+
+            std::cout << "Loaded " << data_set.size() << " bytes dataset\n";
+        }
+        else
+        {
+            std::cout << "Generating test data...\n";
+            data_set = generate_data_set(words);
+            std::cout << "Generated " << data_set.size() << " bytes\n";
+        }
+
+        auto words = count_words(data_set) + 1;
+        std::cout << "Data size is " << words << " words\n";
+
+        RString source_immutable(data_set);
         
-        std_string_bench(source.first, source.second);
-        immutable_string_bench(source_immutable, source.second);
+        //run_benchmark_split_merge(data_set, words, std_string_splitter, std_string_merger, runs);
+        run_benchmark_split_merge(source_immutable, words, immutable_string_splitter, immutable_string_merger, runs);
 
     }
     catch (std::exception& e)
     {
         std::cerr << "Unexpected error: " << e.what() << "\n";
+        return -1;
     }
+
+    return 0;
 }

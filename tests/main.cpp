@@ -2,6 +2,7 @@
 #include "common.h"
 
 #include <csignal>
+#include <cstring>
 #include <iostream>
 
 #if !defined(NDEBUG) && defined(_MSC_VER)

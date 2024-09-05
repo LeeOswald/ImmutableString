@@ -14,6 +14,10 @@ if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
 
+if(NOT MSVC)
+    #add_compile_options(-fsanitize=address -g3)
+    #add_link_options(-fsanitize=address)
+endif()
 
 # Windows-specific settings
 if(ER_WINDOWS)

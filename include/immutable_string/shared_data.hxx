@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <cassert>
+#include <cstring>
 #include <memory>
 #include <type_traits>
 
@@ -114,17 +115,12 @@ public:
     }
 
 private:
-    template <class AllocatorT, class U>
-    using _rebind_alloc = typename std::allocator_traits<AllocatorT>::template rebind_alloc<U>;
+    template <class Al, class U>
+    using _rebind_alloc = typename std::allocator_traits<Al>::template rebind_alloc<U>;
 
     using _raw_allocator = _rebind_alloc<allocator_type, std::byte>;
 
-    static constexpr size_type padded_header_size() noexcept
-    {
-        static constexpr size_type alignment = alignof(value_type) < alignof(void*) ? alignof(void*) : alignof(value_type);
-        static constexpr size_type header_size = (sizeof(shared_data) + alignment - 1) & (~(alignment - 1));
-        return header_size;
-    }
+    static constexpr size_type padded_header_size() noexcept;
     
     ~shared_data() = default;
 
@@ -149,3 +145,11 @@ private:
     size_type m_capacity;
     size_type m_size;
 };
+
+template <typename T, typename AllocatorT>
+constexpr typename shared_data<T, AllocatorT>::size_type shared_data<T, AllocatorT>::padded_header_size() noexcept
+{
+    constexpr size_type alignment = alignof(value_type) < alignof(void*) ? alignof(void*) : alignof(value_type);
+    constexpr size_type header_size = (sizeof(shared_data) + alignment - 1) & (~(alignment - 1));
+    return header_size;
+}

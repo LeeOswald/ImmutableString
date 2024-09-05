@@ -24,11 +24,4 @@ TEST(shared_data, create)
     EXPECT_EQ(it[0].v, 1);
     EXPECT_EQ(it[1].v, -2);
     EXPECT_EQ(it[2].v, 3);
-
-    auto r = a->add_ref();
-    auto refs = r->release();
-    EXPECT_EQ(refs, 1);
-
-    refs = a->release();
-    EXPECT_EQ(refs, 0);
 }

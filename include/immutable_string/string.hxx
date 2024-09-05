@@ -142,8 +142,8 @@ class basic_immutable_string final
 private:
     static_assert(std::is_same_v<CharT, typename TraitsT::char_type>);
 
-    template <class AllocatorT, class U>
-    using _rebind_alloc = typename std::allocator_traits<AllocatorT>::template rebind_alloc<U>;
+    template <class Al, class U>
+    using _rebind_alloc = typename std::allocator_traits<Al>::template rebind_alloc<U>;
 
     using _allocator = _rebind_alloc<AllocatorT, CharT>;
     using _allocator_traits = std::allocator_traits<_allocator>;
@@ -311,19 +311,23 @@ public:
     basic_immutable_string(const basic_immutable_string& other) noexcept
         : m_size(other.m_size)
     {
-        // this will copy m_storage.short_string either
-        m_storage.ptrs.storage = other.m_storage.ptrs.storage;
-        m_storage.ptrs.str = other.m_storage.ptrs.str;
+        if (other._is_shared() && other.m_storage.ptrs.storage)
+        {
+            m_storage.ptrs.storage = other.m_storage.ptrs.storage->add_ref().release();
+            m_storage.ptrs.str = m_storage.ptrs.storage->data();
+        }
+        else
+        {
+            // this will copy m_storage.short_string either
+            m_storage.ptrs.storage = other.m_storage.ptrs.storage;
+            m_storage.ptrs.str = other.m_storage.ptrs.str;
+        }
     }
 
     basic_immutable_string& operator=(const basic_immutable_string& other) noexcept
     {
-        if (&other != this) [[likely]]
-        {
-            basic_immutable_string tmp(other);
-            swap(tmp);
-        }
-
+        basic_immutable_string tmp(other);
+        swap(tmp);
         return *this;
     }
 
@@ -335,12 +339,8 @@ public:
 
     basic_immutable_string& operator=(basic_immutable_string&& other) noexcept
     {
-        if (&other != this) [[likely]]
-        {
-            basic_immutable_string tmp(std::move(other));
-            swap(tmp);
-        }
-
+        basic_immutable_string tmp(std::move(other));
+        swap(tmp);
         return *this;
     }
 
@@ -652,7 +652,6 @@ private:
 
     static constexpr const_pointer _empty_str() noexcept
     {
-        static value_type _e = { value_type{} };
         return &_e;
     }
 
@@ -818,6 +817,8 @@ private:
     // and all of this is because of .c_str() constness 
     mutable size_type m_size;
     mutable _sso_storage m_storage;
+
+    static inline value_type _e = { value_type{} };
 };
 
 

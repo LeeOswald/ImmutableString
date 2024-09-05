@@ -78,6 +78,10 @@ public:
         return static_cast<_Ty*>(allocator_base::allocate(sizeof(_Ty) * _Count));
     }
 
+    friend constexpr bool operator==(const BenchAllocator& a, const BenchAllocator& b) noexcept
+    {
+        return true;
+    }
 };
 
 using StdString = std::basic_string<char, std::char_traits<char>, BenchAllocator<char>>;

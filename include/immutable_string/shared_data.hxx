@@ -147,6 +147,7 @@ private:
 };
 
 template <typename T, typename AllocatorT>
+    requires (!std::is_array_v<T>) && std::is_trivial_v<T> && std::is_standard_layout_v<T>
 constexpr typename shared_data<T, AllocatorT>::size_type shared_data<T, AllocatorT>::padded_header_size() noexcept
 {
     constexpr size_type alignment = alignof(value_type) < alignof(void*) ? alignof(void*) : alignof(value_type);

@@ -314,14 +314,13 @@ public:
         if (other._is_shared() && other.m_storage.ptrs.storage)
         {
             m_storage.ptrs.storage = other.m_storage.ptrs.storage->add_ref().release();
-            m_storage.ptrs.str = m_storage.ptrs.storage->data();
         }
         else
         {
-            // this will copy m_storage.short_string either
             m_storage.ptrs.storage = other.m_storage.ptrs.storage;
-            m_storage.ptrs.str = other.m_storage.ptrs.str;
         }
+
+        m_storage.ptrs.str = other.m_storage.ptrs.str;
     }
 
     basic_immutable_string& operator=(const basic_immutable_string& other) noexcept
@@ -543,9 +542,11 @@ public:
     {
     public:
         builder(size_type size_hint = 16, const allocator_type& a = allocator_type())
-            : m_strings(size_hint, a)
+            : m_strings(a)
             , m_allocator(a)
         {
+            if (size_hint)
+                m_strings.reserve(size_hint);
         }
 
         builder(const builder&) = delete;
@@ -557,12 +558,6 @@ public:
         builder& append(StringT&& str)
         {
             m_strings.push_back(std::forward<StringT>(str));
-            return *this;
-        }
-
-        builder& append(const basic_immutable_string& str)
-        {
-            m_strings.push_back(str);
             return *this;
         }
 

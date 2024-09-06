@@ -92,7 +92,7 @@ static void generateWord(OStringStream& ss)
 {
     static const char ValidChars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     static const size_t ValidCharsCount = sizeof(ValidChars) - 1;
-    static const int MaxWordLength = 15;
+    static const int MaxWordLength = 64;
 
     static std::random_device rd;
     static std::mt19937 gen(rd());
@@ -196,7 +196,7 @@ void run_benchmark_split_merge(const StringT& source, uint64_t wc, SplitT splitt
     {
         words.clear();
 
-        allocator_base::_verbose = true;
+        //allocator_base::_verbose = true;
 
         // split
         {
@@ -216,7 +216,7 @@ void run_benchmark_split_merge(const StringT& source, uint64_t wc, SplitT splitt
             auto msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
             timeSplit += msecs;
         }
-
+#if 1
         // merge
         {
             auto mem0 = allocator_base::_allocated_bytes;
@@ -237,7 +237,7 @@ void run_benchmark_split_merge(const StringT& source, uint64_t wc, SplitT splitt
             auto msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
             timeMerge += msecs;
         }
-
+#endif
         allocator_base::_verbose = false;
     }
 
@@ -282,6 +282,26 @@ static void std_string_merger(std::vector<StdString, BenchAllocator<StdString>>&
         std::cout << "ERROR while splitting/merging std::string\n";
 }
 
+static void std_string_stream_merger(std::vector<StdString, BenchAllocator<StdString>>& v, const StdString& source)
+{
+    std::cout << "Merging std::string with std::ostringstream...\n";
+    OStringStream ss;
+    std::size_t i = 0;
+    std::size_t count = v.size();
+    for (auto& s : v)
+    {
+        ss << std::move(s);
+        if (++i < count)
+        {
+            ss << SEPARATOR;
+        }
+    }
+
+    auto r = ss.str();
+    if (r != source)
+        std::cout << "ERROR while splitting/merging std::string\n";
+}
+
 static void immutable_string_splitter(std::vector<RString, BenchAllocator<RString>>& v, const RString& source, bool silent)
 {
     if (!silent)
@@ -299,6 +319,7 @@ static void immutable_string_merger(std::vector<RString, BenchAllocator<RString>
     for (auto& s : v)
     {
         b.append(s);
+
         if (++i < count)
         {
             b.append(RString(SSEPARATOR, 1, RString::FromStringLiteral));
@@ -377,7 +398,8 @@ int run_benchmark(const std::string& file, unsigned long long words, unsigned ru
 
         RString source_immutable(data_set);
         
-        //run_benchmark_split_merge(data_set, words, std_string_splitter, std_string_merger, runs);
+        run_benchmark_split_merge(data_set, words, std_string_splitter, std_string_merger, runs);
+        run_benchmark_split_merge(data_set, words, std_string_splitter, std_string_stream_merger, runs);
         run_benchmark_split_merge(source_immutable, words, immutable_string_splitter, immutable_string_merger, runs);
 
     }

@@ -27,7 +27,7 @@ static void signalHandler(int signal)
 }
 
 int generate_benchmark(const std::string& file, unsigned long long words);
-int run_benchmark(const std::string& file, unsigned long long words, unsigned runs);
+int run_benchmark(const std::string& file, unsigned long long words, unsigned runs, bool silent);
 
 int main(int argc, char** argv)
 {
@@ -44,6 +44,7 @@ int main(int argc, char** argv)
     std::set_terminate(terminateHandler);
     std::signal(SIGABRT, signalHandler);
 
+    bool silent = false;
     bool bench = false;
     unsigned long long bench_size_words = 1 * 1000 * 1000; 
     std::string data_file;
@@ -55,6 +56,10 @@ int main(int argc, char** argv)
         if (!std::strcmp(argv[i], "--benchmark"))
         {
             bench = true;
+        }
+        else if (!std::strcmp(argv[i], "--silent"))
+        {
+            silent = true;
         }
         else if (!std::strcmp(argv[i], "--size"))
         {
@@ -98,7 +103,7 @@ int main(int argc, char** argv)
 
     if (bench)
     {
-        return run_benchmark(data_file, bench_size_words, runs);
+        return run_benchmark(data_file, bench_size_words, runs, silent);
     }
 
     ::testing::InitGoogleTest(&argc, argv);

@@ -298,6 +298,17 @@ private:
     {
         typename _allocator_traits::const_pointer str;
         _storage* storage;
+
+        constexpr _ptrs() noexcept
+        {
+            // do nothing, ptrs will be initialized somewhere else
+        }
+
+        constexpr _ptrs(typename _allocator_traits::const_pointer str, _storage* storage) noexcept
+            : str(str)
+            , storage(storage)
+        {
+        }
     };
 
     static constexpr typename _allocator_traits::size_type ShortStringSize = sizeof(_ptrs) / sizeof(CharT);
@@ -306,6 +317,15 @@ private:
     {
         _ptrs ptrs;
         CharT short_string[ShortStringSize];
+
+        constexpr _sso_storage() noexcept
+        {
+        }
+
+        constexpr _sso_storage(typename _allocator_traits::const_pointer str, _storage* storage) noexcept
+            : ptrs(str, storage)
+        {
+        }
     };
 
 public:
@@ -334,9 +354,8 @@ public:
 
     constexpr basic_immutable_string() noexcept
         : m_size(IsNullTerminated)
+        , m_storage(_empty_str(), nullptr)
     {
-        m_storage.ptrs.str = _empty_str();
-        m_storage.ptrs.storage = nullptr;
     }
 
     struct FromStringLiteralT {};
@@ -453,17 +472,8 @@ private:
 public:
     basic_immutable_string(const basic_immutable_string& other) noexcept
         : m_size(other.m_size)
+        , m_storage(other.m_storage.ptrs.str, (other._is_shared() && other.m_storage.ptrs.storage) ? other.m_storage.ptrs.storage->add_ref().release() : other.m_storage.ptrs.storage)
     {
-        if (other._is_shared() && other.m_storage.ptrs.storage)
-        {
-            m_storage.ptrs.storage = other.m_storage.ptrs.storage->add_ref().release();
-        }
-        else
-        {
-            m_storage.ptrs.storage = other.m_storage.ptrs.storage;
-        }
-
-        m_storage.ptrs.str = other.m_storage.ptrs.str;
     }
 
     basic_immutable_string& operator=(const basic_immutable_string& other) noexcept

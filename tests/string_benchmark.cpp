@@ -224,7 +224,8 @@ void run_benchmark_split_merge(const StringT& source, uint64_t wc, SplitT splitt
 
             auto start = std::chrono::high_resolution_clock::now();
 
-            merger(words, source);
+            for (int i = 0; i < 10; i++)
+                merger(words, source);
 
             auto end = std::chrono::high_resolution_clock::now();
 

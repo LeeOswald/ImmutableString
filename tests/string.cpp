@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <sstream>
 
+using namespace ims;
+
 static const char* const EMPTY_STRING = "";
 
 static const char* const SHORT_STRING = "test_string_123"; // suitable for SSO
@@ -38,24 +40,6 @@ TEST(immutable_string, create)
         EXPECT_FALSE(src._is_shared());
         EXPECT_FALSE(src._is_short());
         EXPECT_TRUE(src._has_null_terminator());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_TRUE(dst.empty());
-        EXPECT_EQ(dst.length(), 0);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), "");
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from empty string literal
@@ -69,24 +53,6 @@ TEST(immutable_string, create)
         EXPECT_FALSE(src._is_shared());
         EXPECT_FALSE(src._is_short());
         EXPECT_TRUE(src._has_null_terminator());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_TRUE(dst.empty());
-        EXPECT_EQ(dst.length(), 0);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), "");
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from string literal
@@ -100,29 +66,12 @@ TEST(immutable_string, create)
         EXPECT_FALSE(src._is_shared());
         EXPECT_FALSE(src._is_short());
         EXPECT_TRUE(src._has_null_terminator());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), SHORT_STRING);
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from NULL
     {
-        immutable_string src(nullptr);
+        const char* d = nullptr;
+        immutable_string src(d, 0);
         EXPECT_TRUE(src.empty());
         EXPECT_EQ(src.length(), 0);
         EXPECT_EQ(src.size(), 0);
@@ -132,24 +81,6 @@ TEST(immutable_string, create)
         EXPECT_FALSE(src._is_shared());
         EXPECT_FALSE(src._is_short());
         EXPECT_TRUE(src._has_null_terminator());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_TRUE(dst.empty());
-        EXPECT_EQ(dst.length(), 0);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), "");
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from empty C string
@@ -164,24 +95,6 @@ TEST(immutable_string, create)
         EXPECT_FALSE(src._is_shared());
         EXPECT_FALSE(src._is_short());
         EXPECT_TRUE(src._has_null_terminator());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_TRUE(dst.empty());
-        EXPECT_EQ(dst.length(), 0);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), "");
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from short C string
@@ -196,24 +109,6 @@ TEST(immutable_string, create)
         EXPECT_FALSE(src._is_shared());
         EXPECT_TRUE(src._is_short());
         EXPECT_TRUE(src._has_null_terminator());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), SHORT_STRING);
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from C string with length
@@ -228,24 +123,6 @@ TEST(immutable_string, create)
         EXPECT_TRUE(src._is_shared());
         EXPECT_FALSE(src._is_short());
         EXPECT_TRUE(src._has_null_terminator());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), LONG_STRING_LEN);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), LONG_STRING);
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from C string (no terminator)
@@ -262,24 +139,6 @@ TEST(immutable_string, create)
         EXPECT_EQ(src.data(), src.c_str());
         EXPECT_TRUE(src._is_shared());
         EXPECT_FALSE(src._is_short());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), LONG_STRING_PART_LEN);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), LONG_STRING_PART);
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from C string with embedded nulls
@@ -292,49 +151,6 @@ TEST(immutable_string, create)
         EXPECT_NE(src.c_str(), EMBEDDED_NULLS_STRING);
         EXPECT_STREQ(src.c_str(), std::string(EMBEDDED_NULLS_STRING).c_str());
         EXPECT_EQ(0, std::memcmp(src.data(), EMBEDDED_NULLS_STRING, EMBEDDED_NULLS_STRING_LEN));
-        EXPECT_TRUE(src._is_shared());
-        EXPECT_FALSE(src._is_short());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), EMBEDDED_NULLS_STRING_LEN);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_EQ(0, std::memcmp(dst.data(), EMBEDDED_NULLS_STRING, EMBEDDED_NULLS_STRING_LEN));
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
-    }
-
-    // from string data
-    {
-        immutable_string src(LONG_STRING);
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), LONG_STRING_LEN);
-        EXPECT_EQ(dst.size(), LONG_STRING_LEN);
-        EXPECT_NE(dst.c_str(), LONG_STRING);
-        EXPECT_STREQ(dst.c_str(), LONG_STRING);
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from std::string_view
@@ -351,24 +167,6 @@ TEST(immutable_string, create)
         EXPECT_EQ(src.data(), src.c_str());
         EXPECT_TRUE(src._is_shared());
         EXPECT_FALSE(src._is_short());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), LONG_STRING_PART_LEN);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), LONG_STRING_PART);
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 
     // from std::string
@@ -385,24 +183,6 @@ TEST(immutable_string, create)
         EXPECT_EQ(src.data(), src.c_str());
         EXPECT_TRUE(src._is_shared());
         EXPECT_FALSE(src._is_short());
-
-        auto dst = immutable_string::attach(src.detach());
-
-        EXPECT_TRUE(src.empty());
-        EXPECT_EQ(src.length(), 0);
-        EXPECT_EQ(src.size(), 0);
-        EXPECT_TRUE(!!src.c_str());
-        EXPECT_STREQ(src.c_str(), "");
-        EXPECT_EQ(src.data(), src.c_str());
-        EXPECT_TRUE(!src._is_shared());
-
-        EXPECT_FALSE(dst.empty());
-        EXPECT_EQ(dst.length(), LONG_STRING_PART_LEN);
-        EXPECT_EQ(dst.size(), dst.length());
-        EXPECT_STREQ(dst.c_str(), LONG_STRING_PART);
-        EXPECT_EQ(dst.data(), dst.c_str());
-        EXPECT_TRUE(dst._is_shared());
-        EXPECT_FALSE(dst._is_short());
     }
 }
 
@@ -936,7 +716,6 @@ TEST(immutable_string, substr)
         // entire string
         auto dst = src.substr(0);
         EXPECT_FALSE(dst._is_short());
-        EXPECT_FALSE(dst._has_null_terminator());
         EXPECT_FALSE(dst.empty());
         EXPECT_EQ(dst.length(), LONG_STRING_LEN);
         EXPECT_EQ(dst.length(), src.length());
@@ -948,7 +727,6 @@ TEST(immutable_string, substr)
         dst = src.substr(0, LONG_STRING_PART_LEN);
         EXPECT_FALSE(dst._is_short());
         EXPECT_FALSE(dst.empty());
-        EXPECT_FALSE(dst._has_null_terminator());
         EXPECT_EQ(dst.length(), LONG_STRING_PART_LEN);
         EXPECT_EQ(dst.size(), dst.length());
         ASSERT_TRUE(!!dst.c_str());
@@ -957,7 +735,6 @@ TEST(immutable_string, substr)
 
         // substr of substr
         dst = dst.substr(0, LONG_STRING_SHORT_PART_LEN);
-        EXPECT_TRUE(dst._is_short());
         EXPECT_FALSE(dst.empty());
         EXPECT_EQ(dst.length(), LONG_STRING_SHORT_PART_LEN);
         EXPECT_EQ(dst.size(), dst.length());
@@ -966,9 +743,7 @@ TEST(immutable_string, substr)
 
         // nothing left
         dst = src.substr(LONG_STRING_LEN);
-        EXPECT_FALSE(dst._is_short());
         EXPECT_TRUE(dst.empty());
-        EXPECT_TRUE(dst._has_null_terminator());
         EXPECT_EQ(dst.length(), 0);
         EXPECT_EQ(dst.size(), dst.length());
         ASSERT_TRUE(!!dst.c_str());
@@ -976,6 +751,7 @@ TEST(immutable_string, substr)
 
         // substr start exceeds present length
         EXPECT_THROW(dst = src.substr(LONG_STRING_LEN + 1), std::out_of_range);
+
     }
 
     // from short string 
@@ -984,8 +760,6 @@ TEST(immutable_string, substr)
 
         // entire string
         auto dst = src.substr(0);
-        EXPECT_TRUE(dst._is_short());
-        EXPECT_TRUE(dst._has_null_terminator());
         EXPECT_FALSE(dst.empty());
         EXPECT_EQ(dst.length(), SHORT_STRING_LEN);
         EXPECT_EQ(dst.length(), src.length());
@@ -995,9 +769,7 @@ TEST(immutable_string, substr)
 
         // part of string
         dst = src.substr(0, SHORT_STRING_PART_LEN);
-        EXPECT_TRUE(dst._is_short());
         EXPECT_FALSE(dst.empty());
-        EXPECT_TRUE(dst._has_null_terminator());
         EXPECT_EQ(dst.length(), SHORT_STRING_PART_LEN);
         EXPECT_EQ(dst.size(), dst.length());
         ASSERT_TRUE(!!dst.c_str());
@@ -1014,8 +786,6 @@ TEST(immutable_string, substr)
 
         // entire string
         auto dst = src.substr(0);
-        EXPECT_FALSE(dst._is_short());
-        EXPECT_FALSE(dst._has_null_terminator());
         EXPECT_FALSE(dst.empty());
         EXPECT_EQ(dst.length(), LONG_STRING_LEN);
         EXPECT_EQ(dst.length(), src.length());
@@ -1025,9 +795,7 @@ TEST(immutable_string, substr)
 
         // part of string
         dst = src.substr(0, LONG_STRING_PART_LEN);
-        EXPECT_FALSE(dst._is_short());
         EXPECT_FALSE(dst.empty());
-        EXPECT_FALSE(dst._has_null_terminator());
         EXPECT_EQ(dst.length(), LONG_STRING_PART_LEN);
         EXPECT_EQ(dst.size(), dst.length());
         ASSERT_TRUE(!!dst.c_str());
@@ -1036,7 +804,6 @@ TEST(immutable_string, substr)
 
         // substr of substr
         dst = dst.substr(0, LONG_STRING_SHORT_PART_LEN);
-        EXPECT_TRUE(dst._is_short());
         EXPECT_FALSE(dst.empty());
         EXPECT_EQ(dst.length(), LONG_STRING_SHORT_PART_LEN);
         EXPECT_EQ(dst.size(), dst.length());
@@ -1045,9 +812,7 @@ TEST(immutable_string, substr)
 
         // nothing left
         dst = src.substr(LONG_STRING_LEN);
-        EXPECT_FALSE(dst._is_short());
         EXPECT_TRUE(dst.empty());
-        EXPECT_TRUE(dst._has_null_terminator());
         EXPECT_EQ(dst.length(), 0);
         EXPECT_EQ(dst.size(), dst.length());
         ASSERT_TRUE(!!dst.c_str());
@@ -1071,26 +836,12 @@ TEST(immutable_string, iterators)
         return ss.str();
     };
     
-    // empty string
-    {
-        immutable_string src;
-        auto chrs = collect_chars(src);
-        EXPECT_EQ(chrs, std::string());
-
-        immutable_string s2(src.begin(), src.end());
-        auto chrs2 = collect_chars(s2);
-        EXPECT_EQ(chrs2, chrs);
-    }
 
     // from string literal
     {
         immutable_string src(LONG_STRING, immutable_string::FromStringLiteral);
         auto chrs = collect_chars(src);
         EXPECT_EQ(chrs, std::string(LONG_STRING));
-
-        immutable_string s2(src.begin(), src.end());
-        auto chrs2 = collect_chars(s2);
-        EXPECT_EQ(chrs2, chrs);
     }
 
     // short string (SSO)
@@ -1098,10 +849,6 @@ TEST(immutable_string, iterators)
         immutable_string src(SHORT_STRING);
         auto chrs = collect_chars(src);
         EXPECT_EQ(chrs, std::string(SHORT_STRING));
-
-        immutable_string s2(src.begin(), src.end());
-        auto chrs2 = collect_chars(s2);
-        EXPECT_EQ(chrs2, chrs);
     }
 
     // long string
@@ -1109,10 +856,6 @@ TEST(immutable_string, iterators)
         immutable_string src(LONG_STRING);
         auto chrs = collect_chars(src);
         EXPECT_EQ(chrs, std::string(LONG_STRING));
-
-        immutable_string s2(src.begin(), src.end());
-        auto chrs2 = collect_chars(s2);
-        EXPECT_EQ(chrs2, chrs);
     }
 }
 

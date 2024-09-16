@@ -11,6 +11,8 @@
 #include <sstream>
 #include <vector>
 
+using namespace ims;
+
 const char SEPARATOR = '\n';
 const char* const SSEPARATOR = "\n";
 

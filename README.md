@@ -20,6 +20,26 @@ immutable_string str2(str1); // share the same data
 
 * allocation-free substr() method. Substring only hold a strong reference to the original string.
 
+Benchmarks
+--------
+
+Splitting 33,495,558 bytes long string into 1,000,000 words.
+
+* std::string
+```
+Time:                  63 ms
+Allocations:           765618
+Additional memory:     35.523 Mb
+```
+
+* ims::immutable_string
+```
+Time:                  23 ms
+Allocations:           0
+Additional memory:     0 Mb
+```
+
+
 Cloning
 --------
 ```bash

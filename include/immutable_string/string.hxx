@@ -149,6 +149,17 @@ public:
     shared_data(shared_data&&) = delete;
     shared_data& operator=(shared_data&&) = delete;
 
+    struct deleter final
+    {
+        void operator()(shared_data* p) noexcept
+        {
+            if (p)
+                p->release();
+        }
+    };
+
+    using ptr = std::unique_ptr<shared_data, deleter>;
+
     [[nodiscard]] constexpr T const* data() const noexcept
     {
         auto start = reinterpret_cast<const std::byte*>(this);
@@ -822,12 +833,12 @@ public:
     class builder final
     {
     public:
-        builder(size_type size_hint = 16, const allocator_type& a = allocator_type())
-            : m_strings(a)
-            , m_allocator(a)
+        ~builder() = default;
+
+        builder(size_type initial_size = 512, size_type growth_factor = 1024 * 1024, const allocator_type& a = allocator_type())
+            : m_data(_shared_data::create(initial_size, nullptr, 0, a))
+            , m_growth_factor(growth_factor)
         {
-            if (size_hint)
-                m_strings.reserve(size_hint);
         }
 
         builder(const builder&) = delete;
@@ -835,38 +846,51 @@ public:
         builder(builder&&) = default;
         builder& operator=(builder&&) = default;
 
-        template <class StringT>
-        builder& append(StringT&& str)
+        template <detail::IsStringViewish<value_type> StringT>
+        builder& append(const StringT& str)
         {
-            m_strings.push_back(std::forward<StringT>(str));
-            m_required += m_strings.back().size();
+            auto src_size = str.size();
+            if (src_size == 0) [[unlikely]]
+                return *this;
+
+            auto my_size = m_data->size();
+            auto cap = m_data->capacity();
+            size_type required = my_size + src_size;
+            if (required <= cap)
+            {
+                m_data->append(str.data(), src_size);
+            }
+            else
+            {
+                size_type next_size = required * 2;
+                if (next_size > m_growth_factor)
+                    next_size = required + m_growth_factor;
+
+                if (next_size == required)
+                    throw std::length_error("Cannot append more");
+
+                typename _shared_data::ptr tmp(_shared_data::create(next_size, m_data->data(), my_size, m_data->get_allocator()));
+                tmp->append(str.data(), src_size);
+                m_data.swap(tmp);
+            }
+
             return *this;
         }
 
-        basic_immutable_string str() const
+        builder& append(const char* str)
         {
-            if (!m_required)
-                return basic_immutable_string();
+            return append(std::basic_string_view<value_type, traits_type>(str));
+        }
 
-            auto sd = detail::shared_data<value_type, traits_type, allocator_type>::create(m_required, nullptr, 0, m_allocator);
-            if (!sd) [[unlikely]]
-                throw std::bad_alloc();
-
-            for (auto& s : m_strings)
-            {
-                if (!s.empty())
-                    sd->append(s.data(), s.size());
-            }
-
-            return basic_immutable_string(sd, sd->data(), sd->size(), true);
+        basic_immutable_string str() const noexcept
+        {
+            m_data->add_ref();
+            return basic_immutable_string(m_data.get(), m_data->data(), m_data->size(), true);
         }
 
     private:
-        using _allocator = _rebind_alloc<allocator_type, basic_immutable_string>;
-
-        std::vector<basic_immutable_string, _allocator> m_strings;
-        _allocator m_allocator;
-        size_type m_required = 0;
+        mutable typename _shared_data::ptr m_data;
+        size_type const m_growth_factor;
     };
 
     template <class StringT>

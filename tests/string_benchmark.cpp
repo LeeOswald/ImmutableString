@@ -217,7 +217,7 @@ void run_benchmark_split_merge(const StringT& source, uint64_t wc, SplitT splitt
             auto msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
             timeSplit += msecs;
         }
-#if 1
+
         // merge
         {
             auto mem0 = allocator_base::_allocated_bytes;
@@ -225,10 +225,7 @@ void run_benchmark_split_merge(const StringT& source, uint64_t wc, SplitT splitt
 
             auto start = std::chrono::high_resolution_clock::now();
 
-            for (int i = 0; i < 10; i++) 
-            {
-                merger(words, source, silent);
-            }
+            merger(words, source, silent);
 
             auto end = std::chrono::high_resolution_clock::now();
 
@@ -241,8 +238,8 @@ void run_benchmark_split_merge(const StringT& source, uint64_t wc, SplitT splitt
             auto msecs = std::chrono::duration_cast<std::chrono::milliseconds>(dura).count();
             timeMerge += msecs;
         }
-#endif
-        allocator_base::_verbose = false;
+
+        //allocator_base::_verbose = false;
     }
 
     if (!silent)
@@ -275,7 +272,15 @@ static void std_string_merger(const std::vector<StdString, BenchAllocator<StdStr
     if (!silent)
         std::cout << "Merging std::string...\n";
 
+    std::size_t total = 0;
+    for (auto& s : v)
+    {
+        total += s.size();
+    }
+
     StdString m;
+    m.reserve(total);
+
     std::size_t i = 0;
     std::size_t count =  v.size();
     for (auto& s : v)
@@ -326,8 +331,14 @@ static void immutable_string_merger(const std::vector<RString, BenchAllocator<RS
     if (!silent)
         std::cout << "Merging immutable_string...\n";
 
+    std::size_t total = 0;
+    for (auto& s : v)
+    {
+        total += s.size();
+    }
+
     std::size_t count = v.size();
-    RString::builder b(count);
+    RString::builder b(total);
     std::size_t i = 0;
     
     for (auto& s : v)

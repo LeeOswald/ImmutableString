@@ -835,12 +835,10 @@ public:
     public:
         ~builder() = default;
 
-        builder(size_type reserve = 32, const allocator_type& a = allocator_type())
-            : m_parts(a)
-            , m_allocator(a)
+        builder(size_type reserve = 4096, const allocator_type& a = allocator_type())
+            : m_storage(_shared_data::create(std::max(reserve, MinReserve), nullptr, 0, a))
+
         {
-            if (reserve)
-                m_parts.reserve(reserve);
         }
 
         builder(const builder&) = delete;
@@ -851,12 +849,24 @@ public:
         template <detail::IsStringViewish<value_type> StringT>
         builder& append(const StringT& str)
         {
-            auto src_size = str.size();
-            if (src_size == 0) [[unlikely]]
+            auto add_sz = str.size();
+            if (!add_sz) [[unlikely]]
                 return *this;
 
-            m_parts.push_back(str);
-            m_total += src_size;
+            auto my_sz = m_storage->size();
+            auto my_cap = m_storage->capacity();
+            auto new_sz = my_sz + add_sz;
+            if (new_sz <= my_cap) [[likely]]
+            {
+                m_storage->append(str.data(), add_sz);
+            }
+            else
+            {
+                size_type new_cap = std::max(new_sz, my_cap + my_cap / 2);
+                typename _shared_data::ptr new_storage(_shared_data::create(new_cap, m_storage->data(), my_sz, m_storage->get_allocator()));
+                new_storage->append(str.data(), add_sz);
+                m_storage.swap(new_storage);
+            }
 
             return *this;
         }
@@ -868,29 +878,13 @@ public:
 
         basic_immutable_string str() const
         {
-            if (!m_total) [[unlikely]]
-                return basic_immutable_string();
-
-            typename _shared_data::ptr sd(_shared_data::create(m_total, nullptr, 0, m_allocator));
-            for (auto& part : m_parts)
-            {
-                sd->append(part.data(), part.size());
-            }
-
-            auto d = sd->data();
-
-            return basic_immutable_string(sd.release(), d, m_total, true);
+            m_storage->add_ref();
+            return basic_immutable_string(m_storage.get(), m_storage->data(), m_storage->size(), true);
         }
 
     private:
-        template <class Al, class U>
-        using _rebind_alloc = typename std::allocator_traits<Al>::template rebind_alloc<U>;
-
-        using _my_allocator = _rebind_alloc<allocator_type, basic_immutable_string>;
-
-        std::vector<basic_immutable_string, _my_allocator> m_parts;
-        allocator_type m_allocator;
-        size_type m_total = 0;
+        static const size_type MinReserve = 1024;
+        _shared_data::ptr m_storage;
     };
 
     template <class StringT>

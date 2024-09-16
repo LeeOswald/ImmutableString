@@ -16,8 +16,9 @@ immutable_string str2(str1); // share the same data
 
 * *almost* zero-cost copying. Copying a basic_immutable_string instance costs as much as one atomic increment and two pointer-size member copyings.
 
-* short string optimization (SSO). Strings up to 16 bytes (on x64) long (including null terminator) are stored inside basic_immutable_string object, no additional allocations.
+* short string optimization (SSO). Strings up to 22 bytes long on x64 (including null terminator) are stored inside basic_immutable_string object, no additional allocations.
 
+* allocation-free substr() method. Substring only hold a strong reference to the original string.
 
 Cloning
 --------
@@ -28,7 +29,7 @@ git clone --recurse-submodules https://github.com/LeeOswald/ImmutableString.git
 
 Building
 --------
-This is a header-only library; however, tests require building.
+This is a header-only library; only tests require building.
 On Windows, open Visual Studio Command Propmpt (or just find and run vcvars64.bat from VS installation folder).
 
 ```bash
@@ -36,5 +37,5 @@ cd ImmutableString
 mkdir build
 cd build
 cmake ..
-cmake . --build --target tests
+cmake . --build
 ```

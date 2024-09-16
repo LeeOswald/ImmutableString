@@ -270,7 +270,7 @@ static void std_string_splitter(std::vector<StdString, BenchAllocator<StdString>
     split2(source, v);
 }
 
-static void std_string_merger(std::vector<StdString, BenchAllocator<StdString>>& v, const StdString& source, bool silent)
+static void std_string_merger(const std::vector<StdString, BenchAllocator<StdString>>& v, const StdString& source, bool silent)
 {
     if (!silent)
         std::cout << "Merging std::string...\n";
@@ -280,7 +280,7 @@ static void std_string_merger(std::vector<StdString, BenchAllocator<StdString>>&
     std::size_t count =  v.size();
     for (auto& s : v)
     {
-        m.append(std::move(s));
+        m.append(s);
         if (++i < count)
         {
             m.append(1, SEPARATOR);
@@ -291,7 +291,7 @@ static void std_string_merger(std::vector<StdString, BenchAllocator<StdString>>&
         std::cout << "ERROR while splitting/merging std::string\n";
 }
 
-static void std_string_stream_merger(std::vector<StdString, BenchAllocator<StdString>>& v, const StdString& source, bool silent)
+static void std_string_stream_merger(const std::vector<StdString, BenchAllocator<StdString>>& v, const StdString& source, bool silent)
 {
     if (!silent)
         std::cout << "Merging std::string with std::ostringstream...\n";
@@ -301,7 +301,7 @@ static void std_string_stream_merger(std::vector<StdString, BenchAllocator<StdSt
     std::size_t count = v.size();
     for (auto& s : v)
     {
-        ss << std::move(s);
+        ss << s;
         if (++i < count)
         {
             ss << SEPARATOR;
@@ -321,14 +321,15 @@ static void immutable_string_splitter(std::vector<RString, BenchAllocator<RStrin
     split2(source, v);
 }
 
-static void immutable_string_merger(std::vector<RString, BenchAllocator<RString>>& v, const RString& source, bool silent)
+static void immutable_string_merger(const std::vector<RString, BenchAllocator<RString>>& v, const RString& source, bool silent)
 {
     if (!silent)
         std::cout << "Merging immutable_string...\n";
 
-    RString::builder b;
-    std::size_t i = 0;
     std::size_t count = v.size();
+    RString::builder b(count);
+    std::size_t i = 0;
+    
     for (auto& s : v)
     {
         b.append(s);
@@ -411,8 +412,8 @@ int run_benchmark(const std::string& file, unsigned long long words, unsigned ru
 
         RString source_immutable(data_set);
         
-        //run_benchmark_split_merge(data_set, words, std_string_splitter, std_string_merger, runs, silent);
-        //run_benchmark_split_merge(data_set, words, std_string_splitter, std_string_stream_merger, runs, silent);
+        run_benchmark_split_merge(data_set, words, std_string_splitter, std_string_merger, runs, silent);
+        run_benchmark_split_merge(data_set, words, std_string_splitter, std_string_stream_merger, runs, silent);
         run_benchmark_split_merge(source_immutable, words, immutable_string_splitter, immutable_string_merger, runs, silent);
 
     }

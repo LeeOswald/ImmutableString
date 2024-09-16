@@ -835,10 +835,12 @@ public:
     public:
         ~builder() = default;
 
-        builder(size_type initial_size = 512, size_type growth_factor = 1024 * 1024, const allocator_type& a = allocator_type())
-            : m_data(_shared_data::create(initial_size, nullptr, 0, a))
-            , m_growth_factor(growth_factor)
+        builder(size_type reserve = 32, const allocator_type& a = allocator_type())
+            : m_parts(a)
+            , m_allocator(a)
         {
+            if (reserve)
+                m_parts.reserve(reserve);
         }
 
         builder(const builder&) = delete;
@@ -853,26 +855,8 @@ public:
             if (src_size == 0) [[unlikely]]
                 return *this;
 
-            auto my_size = m_data->size();
-            auto cap = m_data->capacity();
-            size_type required = my_size + src_size;
-            if (required <= cap)
-            {
-                m_data->append(str.data(), src_size);
-            }
-            else
-            {
-                size_type next_size = required * 2;
-                if (next_size > m_growth_factor)
-                    next_size = required + m_growth_factor;
-
-                if (next_size == required)
-                    throw std::length_error("Cannot append more");
-
-                typename _shared_data::ptr tmp(_shared_data::create(next_size, m_data->data(), my_size, m_data->get_allocator()));
-                tmp->append(str.data(), src_size);
-                m_data.swap(tmp);
-            }
+            m_parts.push_back(str);
+            m_total += src_size;
 
             return *this;
         }
@@ -882,15 +866,31 @@ public:
             return append(std::basic_string_view<value_type, traits_type>(str));
         }
 
-        basic_immutable_string str() const noexcept
+        basic_immutable_string str() const
         {
-            m_data->add_ref();
-            return basic_immutable_string(m_data.get(), m_data->data(), m_data->size(), true);
+            if (!m_total) [[unlikely]]
+                return basic_immutable_string();
+
+            typename _shared_data::ptr sd(_shared_data::create(m_total, nullptr, 0, m_allocator));
+            for (auto& part : m_parts)
+            {
+                sd->append(part.data(), part.size());
+            }
+
+            auto d = sd->data();
+
+            return basic_immutable_string(sd.release(), d, m_total, true);
         }
 
     private:
-        mutable typename _shared_data::ptr m_data;
-        size_type const m_growth_factor;
+        template <class Al, class U>
+        using _rebind_alloc = typename std::allocator_traits<Al>::template rebind_alloc<U>;
+
+        using _my_allocator = _rebind_alloc<allocator_type, basic_immutable_string>;
+
+        std::vector<basic_immutable_string, _my_allocator> m_parts;
+        allocator_type m_allocator;
+        size_type m_total = 0;
     };
 
     template <class StringT>
